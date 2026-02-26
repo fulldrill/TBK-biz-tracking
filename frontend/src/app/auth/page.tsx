@@ -1,8 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
-import { authApi } from "@/lib/api";
+import { authApi, checkHealth, getErrorMessage, API_BASE } from "@/lib/api";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -12,6 +11,17 @@ export default function AuthPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [totpSecret, setTotpSecret] = useState("");
+  const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+
+  const runHealthCheck = useCallback(async () => {
+    setBackendStatus("checking");
+    const healthy = await checkHealth();
+    setBackendStatus(healthy ? "connected" : "disconnected");
+  }, []);
+
+  useEffect(() => {
+    runHealthCheck();
+  }, [runHealthCheck]);
 
   const validate = (): string | null => {
     if (mode === "register" && !form.full_name.trim()) {
@@ -63,13 +73,7 @@ export default function AuthPage() {
         router.push("/dashboard");
       }
     } catch (err: unknown) {
-      let message = "Authentication failed. Check your credentials.";
-      if (axios.isAxiosError(err) && err.response?.data?.detail) {
-        message = err.response.data.detail;
-      } else if (err instanceof Error) {
-        message = err.message;
-      }
-      setError(message);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -82,6 +86,38 @@ export default function AuthPage() {
           <h1 className="text-3xl font-bold text-gray-900">BizTrack</h1>
           <p className="text-gray-500 mt-1">Business Financial Tracking</p>
         </div>
+
+        {/* Backend connection status */}
+        <div className="flex items-center justify-between mb-4 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${
+                backendStatus === "connected"
+                  ? "bg-green-500"
+                  : backendStatus === "disconnected"
+                  ? "bg-red-500"
+                  : "bg-yellow-400 animate-pulse"
+              }`}
+            />
+            {backendStatus === "connected"
+              ? "Backend connected"
+              : backendStatus === "disconnected"
+              ? "Backend unreachable"
+              : "Checking connection…"}
+          </span>
+          <button
+            onClick={runHealthCheck}
+            className="text-blue-500 hover:underline"
+          >
+            Test connection
+          </button>
+        </div>
+        {backendStatus === "disconnected" && (
+          <div className="bg-orange-50 border border-orange-200 text-orange-700 text-xs rounded-lg px-3 py-2 mb-4">
+            Cannot reach <code className="font-mono">{API_BASE}</code>. Ensure the backend is
+            running and <code className="font-mono">NEXT_PUBLIC_API_URL</code> is set correctly.
+          </div>
+        )}
 
         {totpSecret && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
