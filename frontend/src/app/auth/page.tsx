@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { authApi } from "@/lib/api";
 
 export default function AuthPage() {
@@ -8,11 +9,38 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [form, setForm] = useState({ email: "", password: "", full_name: "", totp_code: "" });
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [totpSecret, setTotpSecret] = useState("");
 
+  const validate = (): string | null => {
+    if (mode === "register" && !form.full_name.trim()) {
+      return "Full name is required.";
+    }
+    if (!form.email.trim()) {
+      return "Email is required.";
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      return "Please enter a valid email address.";
+    }
+    if (!form.password) {
+      return "Password is required.";
+    }
+    if (form.password.length < 8) {
+      return "Password must be at least 8 characters.";
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
     setError("");
+    setSuccess("");
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setLoading(true);
     try {
       if (mode === "register") {
@@ -22,6 +50,8 @@ export default function AuthPage() {
           full_name: form.full_name,
         });
         setTotpSecret(res.data.totp_secret);
+        setSuccess("Account created successfully! Save your 2FA secret below, then sign in.");
+        setForm({ email: form.email, password: "", full_name: "", totp_code: "" });
         setMode("login");
       } else {
         const res = await authApi.login({
@@ -33,7 +63,12 @@ export default function AuthPage() {
         router.push("/dashboard");
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Authentication failed. Check your credentials.";
+      let message = "Authentication failed. Check your credentials.";
+      if (axios.isAxiosError(err) && err.response?.data?.detail) {
+        message = err.response.data.detail;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
       setError(message);
     } finally {
       setLoading(false);
@@ -111,6 +146,12 @@ export default function AuthPage() {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-2">
+              {success}
             </div>
           )}
 
