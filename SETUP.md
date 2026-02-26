@@ -132,7 +132,7 @@ docker run -d \
   -e POSTGRES_USER=biztrack \
   -e POSTGRES_PASSWORD=biztrack_secret \
   -e POSTGRES_DB=biztrack \
-  -p 5432:5432 \
+  -p 5444:5432 \
   postgres:16-alpine
 ```
 
