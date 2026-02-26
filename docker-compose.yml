@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: biztrack_secret
       POSTGRES_DB: biztrack
     ports:
-      - "5432:5432"
+      - "5444:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
