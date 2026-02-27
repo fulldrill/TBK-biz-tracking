@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     PLAID_SECRET: str = ""
     PLAID_ENV: str = "sandbox"
     RECEIPT_STORAGE_PATH: str = "./receipts"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     class Config:
         env_file = ".env"
