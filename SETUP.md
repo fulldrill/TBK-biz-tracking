@@ -49,9 +49,13 @@ test data. You do NOT need to connect a real bank to test.
 
 ---
 
-## Step 2: Configure Environment Variables
+## Step 2: Configure Environment Variables (Optional for Docker)
 
-In your project folder, create `backend/.env` from the template:
+When running via Docker Compose, `backend/.env` is **optional** — the backend
+will start with sensible defaults even without it.
+
+Create `backend/.env` only if you want to set Plaid credentials or a custom
+SECRET_KEY. Copy the template and fill in your values:
 
 ```bash
 # Mac/Linux:
@@ -76,6 +80,9 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 Copy the output and paste it as your SECRET_KEY in `backend/.env`.
+
+> **Note:** `DATABASE_URL` does **not** need to be set in `backend/.env` when
+> using Docker Compose — it is automatically set to the internal service address.
 
 ---
 
@@ -316,7 +323,8 @@ docker compose up -d
 **Backend won't start**
 - Check container status: `docker compose ps`
 - Check backend logs: `docker compose logs backend --tail=200`
-- If logs show `ValidationError` for settings, ensure `backend/.env` exists and includes `SECRET_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, and `ALLOWED_ORIGINS`
+- `backend/.env` is **optional** — Docker Compose will start the backend with built-in defaults even without it. Create it only when you need to set Plaid credentials or a custom SECRET_KEY.
+- If logs show `ValidationError` for settings, ensure `backend/.env` (if it exists) includes valid values for `SECRET_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, and `ALLOWED_ORIGINS`
 - Rebuild after config changes: `docker compose up --build -d`
 - Verify API health: `curl -sS http://localhost:8000/health`
 

@@ -20,7 +20,8 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: postgresql://biztrack:biztrack_secret@db:5432/biztrack
       RECEIPT_STORAGE_PATH: /app/receipts
