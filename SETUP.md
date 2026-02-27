@@ -328,6 +328,8 @@ docker compose up -d
 **Frontend can't reach backend**
 - Check `NEXT_PUBLIC_API_URL` is set to `http://localhost:8000`
 - Make sure backend is running: visit http://localhost:8000/health
+- If you open the frontend via an IP (for example `http://192.168.x.x:3000`), set `NEXT_PUBLIC_API_URL` to that same host on port 8000 (for example `http://192.168.x.x:8000`)
+- Add your frontend origin to `ALLOWED_ORIGINS` (backend `.env`), then restart backend
 
 **Zelle not detected**
 - Your bank uses a different Zelle description format

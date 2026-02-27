@@ -1,6 +1,34 @@
 import axios from "axios";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  if (typeof window !== "undefined") {
+    if (!configured) {
+      return `${window.location.protocol}//${window.location.hostname}:8000`;
+    }
+
+    try {
+      const parsed = new URL(configured);
+      const pageHost = window.location.hostname;
+      const isLocalConfiguredHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+      const isLocalPageHost = pageHost === "localhost" || pageHost === "127.0.0.1";
+
+      if (isLocalConfiguredHost && !isLocalPageHost) {
+        parsed.hostname = pageHost;
+        return parsed.toString().replace(/\/$/, "");
+      }
+    } catch {
+      return configured;
+    }
+
+    return configured;
+  }
+
+  return configured || "http://localhost:8000";
+}
+
+export const API_BASE = resolveApiBase();
 
 const api = axios.create({ baseURL: API_BASE });
 
