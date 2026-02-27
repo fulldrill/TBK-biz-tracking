@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     DATABASE_URL: str = "postgresql://biztrack:biztrack_secret@db:5432/biztrack"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     PLAID_CLIENT_ID: str = ""
     PLAID_SECRET: str = ""
     PLAID_ENV: str = "sandbox"
