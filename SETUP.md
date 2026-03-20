@@ -49,19 +49,23 @@ test data. You do NOT need to connect a real bank to test.
 
 ---
 
-## Step 2: Configure Environment Variables
+## Step 2: Configure Environment Variables (Optional for Docker)
 
-In your project folder, create the `.env` file:
+When running via Docker Compose, `backend/.env` is **optional** — the backend
+will start with sensible defaults even without it.
+
+Create `backend/.env` only if you want to set Plaid credentials or a custom
+SECRET_KEY. Copy the template and fill in your values:
 
 ```bash
 # Mac/Linux:
-cp .env.example .env
+cp backend/.env.example backend/.env
 
 # Windows:
-copy .env.example .env
+copy backend\\.env.example backend\\.env
 ```
 
-Open `.env` in any text editor and fill in your Plaid keys:
+Open `backend/.env` in any text editor and fill in your Plaid keys:
 
 ```
 SECRET_KEY=run-python3-c-import-secrets-print-secrets.token_hex-32-and-paste-here
@@ -75,7 +79,10 @@ Generate a SECRET_KEY by running:
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Copy the output and paste it as your SECRET_KEY.
+Copy the output and paste it as your SECRET_KEY in `backend/.env`.
+
+> **Note:** `DATABASE_URL` does **not** need to be set in `backend/.env` when
+> using Docker Compose — it is automatically set to the internal service address.
 
 ---
 
@@ -182,7 +189,7 @@ To connect your actual bank:
 
 1. Apply for Plaid Production at: https://dashboard.plaid.com/overview/production
 2. Plaid will review your application (usually 1-3 business days)
-3. Once approved, update your `.env`:
+3. Once approved, update `backend/.env`:
    ```
    PLAID_ENV=production
    PLAID_SECRET=your_production_secret_here
@@ -269,7 +276,7 @@ Key endpoints:
    - Root directory: `backend`
    - Build command: `pip install -r requirements.txt`
    - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - Add environment variables from your `.env`
+   - Add environment variables from `backend/.env`
 5. Create a **Static Site** or **Web Service** for the frontend:
    - Root directory: `frontend`
    - Build command: `npm install && npm run build`
@@ -301,8 +308,8 @@ git push heroku main
 # On your server:
 git clone your-repo
 cd biztrack-receipts
-cp .env.example .env
-# Edit .env with your production values
+cp backend/.env.example backend/.env
+# Edit backend/.env with your production values
 docker compose up -d
 
 # Set up Nginx reverse proxy for port 80/443
@@ -313,10 +320,38 @@ docker compose up -d
 
 ## Troubleshooting
 
+**Backend won't start**
+- Check container status: `docker compose ps`
+- Check backend logs: `docker compose logs backend --tail=200`
+- `backend/.env` is **optional** — Docker Compose will start the backend with built-in defaults even without it. Create it only when you need to set Plaid credentials or a custom SECRET_KEY.
+- If logs show `ValidationError` for settings, ensure `backend/.env` (if it exists) includes valid values for `SECRET_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, and `ALLOWED_ORIGINS`
+- Rebuild after config changes: `docker compose up --build -d`
+- Verify API health: `curl -sS http://localhost:8000/health`
+
+**Emergency reset (copy/paste)**
+```bash
+docker compose down
+docker compose up --build -d
+docker compose ps
+docker compose logs backend --tail=100
+curl -sS http://localhost:8000/health
+```
+
+**Hard reset (wipes local DB data)**
+Use this only if normal reset fails and you are okay losing local PostgreSQL data.
+
+```bash
+docker compose down -v
+docker compose up --build -d
+docker compose ps
+docker compose logs backend --tail=100
+curl -sS http://localhost:8000/health
+```
+
 **"Failed to create link token"**
-- Check your PLAID_CLIENT_ID and PLAID_SECRET in `.env`
+- Check your PLAID_CLIENT_ID and PLAID_SECRET in `backend/.env`
 - Make sure PLAID_ENV matches the secret type (sandbox vs production)
-- Restart containers after changing `.env`
+- Restart containers after changing `backend/.env`
 
 **"No connected bank accounts"**
 - Complete Step 6 first before syncing
@@ -365,6 +400,7 @@ to the internet or multiple users:
 ```
 biztrack-receipts/
 ├── backend/
+│   ├── .env.example            # Backend env template
 │   ├── app/
 │   │   ├── main.py              # FastAPI app, auth routes
 │   │   ├── config.py            # Settings from .env
@@ -397,6 +433,5 @@ biztrack-receipts/
 │       ├── lib/api.ts           # Axios API client
 │       └── types/index.ts       # TypeScript types
 ├── docker-compose.yml
-├── .env.example
 └── SETUP.md                     # This file
 ```
