@@ -76,9 +76,11 @@ Tables are created at startup via SQLAlchemy ORM (no Alembic migration needed fo
 - `app/services/pdf_generator.py` — ReportLab PDF creation (saved to `/app/receipts` volume)
 
 ### Key Frontend Files
-- `src/lib/api.ts` — Axios client with JWT interceptors
+- `src/lib/api.ts` — Axios client with JWT interceptors; smart hostname resolution when accessed via IP
 - `src/app/dashboard/page.tsx` — Main UI; orchestrates account loading, sync, and export
 - `src/components/PlaidLink.tsx` — Wraps react-plaid-link modal
+- `src/components/SummaryCards.tsx` — Financial totals display (5 cards: deposits, withdrawals, zelle sent/received, net)
+- `src/components/TransactionTable.tsx` — Transaction list with per-row PDF receipt download
 - `src/types/index.ts` — Shared TypeScript interfaces
 
 ## Environment Variables
@@ -103,3 +105,13 @@ Use these test credentials in the Plaid Link modal:
 ## Database Port
 
 PostgreSQL is intentionally exposed on **5444** (not 5432) to avoid conflicts with local Postgres installs. Connection string: `postgresql://biztrack:biztrack_secret@localhost:5444/biztrack`
+
+## Gotchas
+
+- **Zelle direction is inverted:** `amount > 0` maps to `"sent"`, not `"received"`. This is opposite of standard banking convention.
+- **Receipt paths are lazy:** `transaction.receipt_path` is NULL until the first `GET /receipts/{id}` request, which generates and caches the PDF. Subsequent requests use the cached path.
+- **`/totals/monthly` returns `{}` not `[]`** when no transactions exist. Clients must handle a dict, not an array.
+- **Background sync has no progress API:** `/transactions/sync` returns immediately; the frontend polls with a 5-second timer.
+- **Alembic is installed but unused.** Tables are created via `Base.metadata.create_all` at startup. Use this for schema changes on fresh installs; add migrations before using Alembic on existing data.
+- **Plaid access tokens are stored in plaintext** in `bank_accounts.plaid_access_token`. No encryption at rest.
+- **No async test helpers configured** despite `pytest-asyncio` being installed. Existing tests are synchronous only.
