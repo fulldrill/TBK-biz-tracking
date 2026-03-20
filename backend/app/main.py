@@ -4,7 +4,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.database import get_db, engine, Base
 from app.routers import bank, transactions, receipts, totals
 from app.auth import hash_password, generate_totp_secret, verify_password, verify_totp, create_access_token
@@ -54,12 +54,15 @@ async def startup():
 
 @app.post("/auth/register", tags=["Auth"])
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(User).where(User.email == user_data.email))
+    normalized_email = user_data.email.strip().lower()
+    existing = await db.execute(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
     totp_secret = generate_totp_secret()
     user = User(
-        email=user_data.email,
+        email=normalized_email,
         hashed_password=hash_password(user_data.password),
         full_name=user_data.full_name,
         totp_secret=totp_secret,
@@ -76,12 +79,16 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @app.post("/auth/login", response_model=Token, tags=["Auth"])
 async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == credentials.email))
+    normalized_email = credentials.email.strip().lower()
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
     user = result.scalar_one_or_none()
     if not user or not verify_password(credentials.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if user.totp_secret and credentials.totp_code:
-        if not verify_totp(user.totp_secret, credentials.totp_code):
+    totp_code = credentials.totp_code.strip() if credentials.totp_code else None
+    if user.totp_secret and totp_code:
+        if not verify_totp(user.totp_secret, totp_code):
             raise HTTPException(status_code=401, detail="Invalid 2FA code")
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)
