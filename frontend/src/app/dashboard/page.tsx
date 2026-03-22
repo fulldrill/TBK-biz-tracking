@@ -20,12 +20,15 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const [filters, setFilters] = useState({
     is_zelle: "" as "" | "true" | "false",
     transaction_type: "",
     start_date: "",
     end_date: "",
     category: "",
+    source: "",
   });
 
   const orgId = activeOrg?.org.id;
@@ -41,6 +44,7 @@ export default function Dashboard() {
       if (filters.start_date) params.start_date = filters.start_date;
       if (filters.end_date) params.end_date = filters.end_date;
       if (filters.category) params.category = filters.category;
+      if (filters.source) params.source = filters.source;
 
       const [txRes, totalsRes] = await Promise.all([
         transactionApi.list(orgId, params),
@@ -103,6 +107,25 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
     } catch {
       alert("No transactions to export, or export failed.");
+    }
+  };
+
+  const handleTransactionUpdated = (updated: Transaction) => {
+    setTransactions((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!orgId || selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} transaction(s)? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await transactionApi.bulkDelete(orgId, Array.from(selectedIds));
+      setTransactions((prev) => prev.filter((t) => !selectedIds.has(t.id)));
+      setSelectedIds(new Set());
+    } catch {
+      alert("Delete failed. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -250,6 +273,18 @@ export default function Dashboard() {
                 className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Source</label>
+              <select
+                value={filters.source}
+                onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
+                className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All</option>
+                <option value="plaid">Bank Sync</option>
+                <option value="statement_import">Imported</option>
+              </select>
+            </div>
             <div className="flex items-end">
               <button
                 onClick={loadData}
@@ -261,7 +296,7 @@ export default function Dashboard() {
             <div className="flex items-end">
               <button
                 onClick={() => {
-                  setFilters({ is_zelle: "", transaction_type: "", start_date: "", end_date: "", category: "" });
+                  setFilters({ is_zelle: "", transaction_type: "", start_date: "", end_date: "", category: "", source: "" });
                 }}
                 className="text-gray-500 hover:text-gray-700 px-3 py-1.5 text-sm transition"
               >
@@ -271,12 +306,24 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Transaction count */}
+        {/* Transaction count + bulk actions */}
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-500">
             {transactions.length} transactions
             {totals && ` | ${totals.transaction_count} total in period`}
+            {selectedIds.size > 0 && (
+              <span className="ml-2 text-blue-600 font-medium">{selectedIds.size} selected</span>
+            )}
           </p>
+          {isAdmin && selectedIds.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              disabled={deleting}
+              className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition"
+            >
+              {deleting ? "Deleting..." : `Delete ${selectedIds.size} selected`}
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -284,7 +331,14 @@ export default function Dashboard() {
             <div className="animate-pulse text-gray-400">Loading transactions...</div>
           </div>
         ) : (
-          <TransactionTable orgId={orgId!} transactions={transactions} />
+          <TransactionTable
+            orgId={orgId!}
+            transactions={transactions}
+            isAdmin={isAdmin}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            onTransactionUpdated={handleTransactionUpdated}
+          />
         )}
       </div>
     </div>

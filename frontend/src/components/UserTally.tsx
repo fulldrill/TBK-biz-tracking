@@ -52,15 +52,25 @@ const USERS = [
     label: "text-amber-700",
     role: "Zelle & walk-in deposits",
   },
+  {
+    name: "Tony",
+    avatar: "T",
+    border: "border-teal-200",
+    bg: "bg-teal-50",
+    avatarBg: "bg-teal-600",
+    label: "text-teal-700",
+    role: "Deposits (manual assignment)",
+  },
 ];
 
 export default function UserTally({ transactions }: Props) {
-  const byUser: Record<string, Transaction[]> = { Kenny: [], Bright: [], Unassigned: [] };
+  const byUser: Record<string, Transaction[]> = { Kenny: [], Bright: [], Tony: [], Unassigned: [] };
 
   for (const tx of transactions) {
     const u = tx.assigned_user;
     if (u === "Kenny") byUser.Kenny.push(tx);
     else if (u === "Bright") byUser.Bright.push(tx);
+    else if (u === "Tony") byUser.Tony.push(tx);
     else byUser.Unassigned.push(tx);
   }
 

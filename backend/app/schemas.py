@@ -70,6 +70,14 @@ class StatementImportRequest(BaseModel):
     transactions: List[ParsedTransaction]
 
 
+class TransactionUpdate(BaseModel):
+    assigned_user: Optional[str] = None  # "Kenny" | "Bright" | "Tony" | None
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: List[str]
+
+
 class TotalsResponse(BaseModel):
     total_deposits: float
     total_withdrawals: float

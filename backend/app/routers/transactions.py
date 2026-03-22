@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.database import get_db, AsyncSessionLocal
 from app.models import User, BankAccount, Transaction, TransactionType, OrgRole
-from app.schemas import TransactionOut
+from app.schemas import TransactionOut, TransactionUpdate, BulkDeleteRequest
 from app.auth import get_current_user, require_org_role
 from app.services.plaid_service import fetch_transactions
 from app.services.zelle_parser import parse_zelle
@@ -99,6 +99,7 @@ async def get_transactions(
     is_zelle: Optional[bool] = None,
     transaction_type: Optional[str] = None,
     category: Optional[str] = None,
+    source: Optional[str] = None,
     limit: int = Query(100, le=500),
     offset: int = 0,
     auth=Depends(require_org_role(OrgRole.VIEWER)),
@@ -115,6 +116,8 @@ async def get_transactions(
         filters.append(Transaction.transaction_type == transaction_type)
     if category:
         filters.append(Transaction.category.ilike(f"%{category}%"))
+    if source:
+        filters.append(Transaction.source == source)
     result = await db.execute(
         select(Transaction)
         .where(and_(*filters))
@@ -123,6 +126,49 @@ async def get_transactions(
         .offset(offset)
     )
     return result.scalars().all()
+
+
+@router.patch("/{transaction_id}", response_model=TransactionOut)
+async def update_transaction(
+    org_id: str,
+    transaction_id: str,
+    body: TransactionUpdate,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Transaction).where(
+            and_(Transaction.id == transaction_id, Transaction.org_id == org_id)
+        )
+    )
+    tx = result.scalar_one_or_none()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if body.assigned_user is not None:
+        tx.assigned_user = body.assigned_user if body.assigned_user != "" else None
+    await db.commit()
+    await db.refresh(tx)
+    return tx
+
+
+@router.delete("/bulk")
+async def bulk_delete_transactions(
+    org_id: str,
+    body: BulkDeleteRequest,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import delete as sql_delete
+    result = await db.execute(
+        sql_delete(Transaction).where(
+            and_(
+                Transaction.org_id == org_id,
+                Transaction.id.in_([UUID(i) for i in body.ids]),
+            )
+        )
+    )
+    await db.commit()
+    return {"deleted": result.rowcount}
 
 
 @router.delete("/{transaction_id}")

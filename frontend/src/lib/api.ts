@@ -113,6 +113,10 @@ export const transactionApi = {
     api.post(`/orgs/${orgId}/transactions/sync?days_back=${days_back}`),
   list: (orgId: string, params: Record<string, unknown>) =>
     api.get(`/orgs/${orgId}/transactions/`, { params }),
+  patch: (orgId: string, txId: string, data: { assigned_user: string | null }) =>
+    api.patch(`/orgs/${orgId}/transactions/${txId}`, data),
+  bulkDelete: (orgId: string, ids: string[]) =>
+    api.delete(`/orgs/${orgId}/transactions/bulk`, { data: { ids } }),
 };
 
 export const totalsApi = {
