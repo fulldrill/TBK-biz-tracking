@@ -29,6 +29,7 @@ services:
       PLAID_ENV: ${PLAID_ENV:-sandbox}
       RECEIPT_STORAGE_PATH: /app/receipts
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     depends_on:
       db:
         condition: service_healthy
