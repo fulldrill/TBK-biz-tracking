@@ -9,6 +9,7 @@ from app.database import get_db, engine, Base, AsyncSessionLocal
 from app.routers import bank, transactions, receipts, totals
 from app.routers import orgs, invites, statements, chat
 from app.auth import hash_password, generate_totp_secret, verify_password, verify_totp, create_access_token
+from app.services.attribution import assign_user
 from app.models import User, Organization, OrgMember, OrgRole, BankAccount
 from app.schemas import UserCreate, UserLogin, Token
 from fastapi import HTTPException
@@ -125,6 +126,26 @@ async def run_org_migration() -> None:
                 await db.rollback()
 
 
+async def backfill_assigned_users() -> None:
+    """One-time idempotent: assign users to all transactions that have assigned_user = NULL."""
+    from app.models import Transaction as TxModel
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(TxModel).where(TxModel.assigned_user.is_(None))
+        )
+        txns = result.scalars().all()
+        updated = 0
+        for tx in txns:
+            tx_type_str = tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type)
+            user = assign_user(tx.name or "", tx_type_str, tx.is_zelle, tx.zelle_counterparty)
+            if user:
+                tx.assigned_user = user
+                updated += 1
+        if updated:
+            await db.commit()
+            logger.info(f"Backfilled assigned_user for {updated} transactions")
+
+
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
@@ -148,6 +169,7 @@ async def startup():
         ))
     os.makedirs("./receipts", exist_ok=True)
     await run_org_migration()
+    await backfill_assigned_users()
 
 
 @app.post("/auth/register", tags=["Auth"])

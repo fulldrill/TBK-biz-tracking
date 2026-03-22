@@ -19,6 +19,7 @@ from typing import Any
 
 import fitz  # pymupdf
 from openai import AsyncOpenAI
+from app.services.attribution import assign_user
 
 logger = logging.getLogger(__name__)
 
@@ -74,56 +75,6 @@ EXAMPLE OUTPUT (return ONLY an array like this, nothing else):
     "category": "Shopping"
   }
 ]"""
-
-# ---------------------------------------------------------------------------
-# Walk-in / manual deposit keyword detection
-# ---------------------------------------------------------------------------
-_WALK_IN_KEYWORDS = [
-    "walk-in", "walk in", "walkin",
-    "cash deposit", "counter deposit",
-    "teller deposit", "branch deposit",
-    "manual deposit", "over the counter",
-]
-
-_DEBIT_CARD_KEYWORDS = [
-    "pos debit", "pos purchase", "debit card",
-    "card purchase", "visa debit", "mastercard debit",
-    "purchase", "point of sale",
-]
-
-# Names that identify Kenny in transaction descriptions / Zelle counterparty fields
-_KENNY_KEYWORDS = ["kenneth", "kenny", "manjo"]
-
-
-def _is_kenny_zelle(name: str, zelle_counterparty: str | None) -> bool:
-    counterparty = (zelle_counterparty or "").lower()
-    desc = name.lower()
-    return any(k in counterparty or k in desc for k in _KENNY_KEYWORDS)
-
-
-def assign_user(
-    name: str,
-    transaction_type: str,
-    is_zelle: bool,
-    zelle_counterparty: str | None = None,
-) -> str | None:
-    """
-    TBK Management attribution logic.
-    Returns "Kenny", "Bright", or None.
-    """
-    if is_zelle:
-        return "Kenny" if _is_kenny_zelle(name, zelle_counterparty) else "Bright"
-
-    desc = name.lower()
-
-    if transaction_type == "credit" and any(k in desc for k in _WALK_IN_KEYWORDS):
-        return "Bright"
-
-    if transaction_type == "debit" and any(k in desc for k in _DEBIT_CARD_KEYWORDS):
-        return "Kenny"
-
-    return None
-
 
 # ---------------------------------------------------------------------------
 # PDF → per-page base64 PNG images

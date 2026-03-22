@@ -8,6 +8,7 @@ from app.auth import get_current_user, require_org_role
 from app.services.plaid_service import fetch_transactions
 from app.services.zelle_parser import parse_zelle
 from app.services.categorizer import categorize_transaction
+from app.services.attribution import assign_user
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
@@ -40,6 +41,7 @@ async def sync_transactions_for_account(account_id: str, org_id: str, user_id: s
             plaid_category = " > ".join(plaid_cats) if plaid_cats else None
             category = categorize_transaction(name, description, plaid_category)
             is_zelle, counterparty, direction = parse_zelle(name, description, amount)
+            tx_type_str = "debit" if tx_type == TransactionType.DEBIT else "credit"
             transaction = Transaction(
                 user_id=user_id,
                 org_id=org_id,
@@ -55,6 +57,7 @@ async def sync_transactions_for_account(account_id: str, org_id: str, user_id: s
                 is_zelle=is_zelle,
                 zelle_counterparty=counterparty,
                 zelle_direction=direction,
+                assigned_user=assign_user(name, tx_type_str, is_zelle, counterparty),
             )
             db.add(transaction)
         account.last_synced = datetime.utcnow()
@@ -160,6 +163,7 @@ async def _legacy_sync_for_account(account: BankAccount, db: AsyncSession, days_
         plaid_category = " > ".join(plaid_cats) if plaid_cats else None
         category = categorize_transaction(name, description, plaid_category)
         is_zelle, counterparty, direction = parse_zelle(name, description, amount)
+        tx_type_str = "debit" if tx_type == TransactionType.DEBIT else "credit"
         transaction = Transaction(
             user_id=account.user_id,
             org_id=account.org_id,
@@ -175,6 +179,7 @@ async def _legacy_sync_for_account(account: BankAccount, db: AsyncSession, days_
             is_zelle=is_zelle,
             zelle_counterparty=counterparty,
             zelle_direction=direction,
+            assigned_user=assign_user(name, tx_type_str, is_zelle, counterparty),
         )
         db.add(transaction)
     account.last_synced = datetime.utcnow()
