@@ -6,6 +6,7 @@ import { exportToCSV } from "@/lib/attribution";
 import { Transaction, Totals } from "@/types";
 import TransactionTable from "@/components/TransactionTable";
 import SummaryCards from "@/components/SummaryCards";
+import UserTally from "@/components/UserTally";
 import PlaidLinkButton from "@/components/PlaidLink";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { useOrg } from "@/context/OrgContext";
@@ -189,6 +190,9 @@ export default function Dashboard() {
 
         {/* Totals */}
         {totals && <SummaryCards totals={totals} />}
+
+        {/* Per-user tally */}
+        <UserTally transactions={transactions} />
 
         {/* Filters */}
         <div className="bg-white border rounded-xl p-4 mb-4">
