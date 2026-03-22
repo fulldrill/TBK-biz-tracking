@@ -91,14 +91,28 @@ _DEBIT_CARD_KEYWORDS = [
     "purchase", "point of sale",
 ]
 
+# Names that identify Kenny in transaction descriptions / Zelle counterparty fields
+_KENNY_KEYWORDS = ["kenneth", "kenny", "manjo"]
 
-def assign_user(name: str, transaction_type: str, is_zelle: bool) -> str | None:
+
+def _is_kenny_zelle(name: str, zelle_counterparty: str | None) -> bool:
+    counterparty = (zelle_counterparty or "").lower()
+    desc = name.lower()
+    return any(k in counterparty or k in desc for k in _KENNY_KEYWORDS)
+
+
+def assign_user(
+    name: str,
+    transaction_type: str,
+    is_zelle: bool,
+    zelle_counterparty: str | None = None,
+) -> str | None:
     """
     TBK Management attribution logic.
     Returns "Kenny", "Bright", or None.
     """
     if is_zelle:
-        return "Bright"
+        return "Kenny" if _is_kenny_zelle(name, zelle_counterparty) else "Bright"
 
     desc = name.lower()
 
@@ -219,6 +233,7 @@ async def parse_pdf_bytes(
             tx.get("name", ""),
             tx.get("transaction_type", ""),
             tx.get("is_zelle", False),
+            tx.get("zelle_counterparty"),
         )
         tx["source"] = "statement_import"
         tx["statement_file"] = filename

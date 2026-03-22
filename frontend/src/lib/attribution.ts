@@ -10,8 +10,19 @@ const WALK_IN_KEYWORDS = [
   "branch deposit",
 ];
 
+// Names that identify Kenny in transaction descriptions / Zelle counterparty fields
+const KENNY_KEYWORDS = ["kenneth", "kenny", "manjo"];
+
+function isKennyZelle(tx: Transaction): boolean {
+  const counterparty = (tx.zelle_counterparty ?? "").toLowerCase();
+  const name = (tx.name ?? "").toLowerCase();
+  return KENNY_KEYWORDS.some((k) => counterparty.includes(k) || name.includes(k));
+}
+
 export function getAssignedUser(tx: Transaction): string {
-  if (tx.is_zelle) return "Bright";
+  if (tx.is_zelle) {
+    return isKennyZelle(tx) ? "Kenny" : "Bright";
+  }
 
   const name = (tx.name ?? "").toLowerCase();
   if (
