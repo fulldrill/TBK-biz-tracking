@@ -101,32 +101,57 @@ export const authApi = {
 };
 
 export const bankApi = {
-  getLinkToken: () => api.get<{ link_token: string }>("/bank/link-token"),
-  connectBank: (public_token: string, institution_name?: string) =>
-    api.post("/bank/connect", { public_token, institution_name }),
-  getAccounts: () => api.get("/bank/accounts"),
+  getLinkToken: (orgId: string) =>
+    api.get<{ link_token: string }>(`/orgs/${orgId}/bank/link-token`),
+  connectBank: (orgId: string, public_token: string, institution_name?: string) =>
+    api.post(`/orgs/${orgId}/bank/connect`, { public_token, institution_name }),
+  getAccounts: (orgId: string) => api.get(`/orgs/${orgId}/bank/accounts`),
 };
 
 export const transactionApi = {
-  sync: (days_back = 90) => api.post(`/transactions/sync?days_back=${days_back}`),
-  list: (params: Record<string, unknown>) =>
-    api.get("/transactions/", { params }),
+  sync: (orgId: string, days_back = 90) =>
+    api.post(`/orgs/${orgId}/transactions/sync?days_back=${days_back}`),
+  list: (orgId: string, params: Record<string, unknown>) =>
+    api.get(`/orgs/${orgId}/transactions/`, { params }),
 };
 
 export const totalsApi = {
-  getSummary: (start_date?: string, end_date?: string) =>
-    api.get("/totals/", { params: { start_date, end_date } }),
-  getMonthly: () => api.get("/totals/monthly"),
+  getSummary: (orgId: string, start_date?: string, end_date?: string) =>
+    api.get(`/orgs/${orgId}/totals/`, { params: { start_date, end_date } }),
+  getMonthly: (orgId: string) => api.get(`/orgs/${orgId}/totals/monthly`),
 };
 
 export const receiptApi = {
-  downloadSingle: (transaction_id: string) =>
-    api.get(`/receipts/${transaction_id}`, { responseType: "blob" }),
-  downloadBatch: (start_date?: string, end_date?: string) =>
-    api.post("/receipts/batch", null, {
+  downloadSingle: (orgId: string, transaction_id: string) =>
+    api.get(`/orgs/${orgId}/receipts/${transaction_id}`, { responseType: "blob" }),
+  downloadBatch: (orgId: string, start_date?: string, end_date?: string) =>
+    api.post(`/orgs/${orgId}/receipts/batch`, null, {
       params: { start_date, end_date },
       responseType: "blob",
     }),
+};
+
+export const orgApi = {
+  list: () => api.get("/orgs/"),
+  create: (name: string) => api.post("/orgs/", { name }),
+  get: (orgId: string) => api.get(`/orgs/${orgId}`),
+  update: (orgId: string, name: string) => api.patch(`/orgs/${orgId}`, { name }),
+  delete: (orgId: string) => api.delete(`/orgs/${orgId}`),
+  getMembers: (orgId: string) => api.get(`/orgs/${orgId}/members`),
+  updateMemberRole: (orgId: string, userId: string, role: string) =>
+    api.patch(`/orgs/${orgId}/members/${userId}`, { role }),
+  removeMember: (orgId: string, userId: string) =>
+    api.delete(`/orgs/${orgId}/members/${userId}`),
+  createInvite: (orgId: string, role: string, expires_hours = 168) =>
+    api.post(`/orgs/${orgId}/invites`, { role, expires_hours }),
+  listInvites: (orgId: string) => api.get(`/orgs/${orgId}/invites`),
+  revokeInvite: (orgId: string, inviteId: string) =>
+    api.delete(`/orgs/${orgId}/invites/${inviteId}`),
+};
+
+export const inviteApi = {
+  preview: (token: string) => api.get(`/invites/${token}`),
+  redeem: (token: string) => api.post(`/invites/${token}/redeem`),
 };
 
 export default api;

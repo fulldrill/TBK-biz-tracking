@@ -40,3 +40,46 @@ export interface MonthlyBreakdown {
     count: number;
   };
 }
+
+// --- Organization types ---
+
+export type OrgRole = "admin" | "viewer";
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  owner_id: string;
+  created_at: string;
+}
+
+export interface UserOrg {
+  org: Organization;
+  role: OrgRole;
+  member_count: number;
+}
+
+export interface OrgMember {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: OrgRole;
+  joined_at: string;
+}
+
+export interface OrgInvite {
+  id: string;
+  org_id: string;
+  token: string;
+  role: OrgRole;
+  expires_at: string;
+  used_by: string | null;
+  is_active: boolean;
+}
+
+export interface InvitePreview {
+  org_name: string;
+  org_id: string;
+  role: OrgRole;
+  expires_at: string;
+}

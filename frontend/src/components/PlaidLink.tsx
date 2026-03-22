@@ -4,27 +4,28 @@ import { useEffect, useState } from "react";
 import { bankApi } from "@/lib/api";
 
 interface Props {
+  orgId: string;
   onSuccess: () => void;
 }
 
-export default function PlaidLinkButton({ onSuccess }: Props) {
+export default function PlaidLinkButton({ orgId, onSuccess }: Props) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     bankApi
-      .getLinkToken()
+      .getLinkToken(orgId)
       .then((res) => setLinkToken(res.data.link_token))
       .catch(() => setError("Failed to initialize bank connection. Check your Plaid keys."));
-  }, []);
+  }, [orgId]);
 
   const { open, ready } = usePlaidLink({
     token: linkToken || "",
     onSuccess: async (public_token, metadata) => {
       setLoading(true);
       try {
-        await bankApi.connectBank(public_token, metadata.institution?.name);
+        await bankApi.connectBank(orgId, public_token, metadata.institution?.name);
         onSuccess();
       } catch {
         setError("Failed to connect bank account.");

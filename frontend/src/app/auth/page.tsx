@@ -1,10 +1,13 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authApi, checkHealth, getErrorMessage, API_BASE } from "@/lib/api";
+import { useOrg } from "@/context/OrgContext";
 
-export default function AuthPage() {
+function AuthForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { orgs, refreshOrgs } = useOrg();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [form, setForm] = useState({ email: "", password: "", full_name: "", totp_code: "" });
   const [error, setError] = useState("");
@@ -70,7 +73,22 @@ export default function AuthPage() {
           totp_code: form.totp_code || undefined,
         });
         localStorage.setItem("access_token", res.data.access_token);
-        router.push("/dashboard");
+        await refreshOrgs();
+        // Handle pending invite redirect
+        const next = searchParams.get("next");
+        const pendingToken = typeof window !== "undefined"
+          ? sessionStorage.getItem("pending_invite_token")
+          : null;
+        if (next) {
+          router.push(next);
+        } else if (pendingToken) {
+          sessionStorage.removeItem("pending_invite_token");
+          router.push(`/invite/${pendingToken}`);
+        } else if (orgs.length > 1) {
+          router.push("/orgs");
+        } else {
+          router.push("/dashboard");
+        }
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -201,5 +219,13 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-slate-900 to-blue-900" />}>
+      <AuthForm />
+    </Suspense>
   );
 }

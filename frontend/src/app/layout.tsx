@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { OrgProvider } from "@/context/OrgContext";
 
 export const metadata: Metadata = {
   title: "BizTrack Receipts",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <OrgProvider>{children}</OrgProvider>
+      </body>
     </html>
   );
 }

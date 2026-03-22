@@ -4,19 +4,20 @@ import { receiptApi } from "@/lib/api";
 import { useState } from "react";
 
 interface Props {
+  orgId: string;
   transactions: Transaction[];
 }
 
 const fmt = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(val));
 
-export default function TransactionTable({ transactions }: Props) {
+export default function TransactionTable({ orgId, transactions }: Props) {
   const [downloading, setDownloading] = useState<string | null>(null);
 
   const downloadReceipt = async (id: string, name: string) => {
     setDownloading(id);
     try {
-      const res = await receiptApi.downloadSingle(id);
+      const res = await receiptApi.downloadSingle(orgId, id);
       const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const a = document.createElement("a");
       a.href = url;

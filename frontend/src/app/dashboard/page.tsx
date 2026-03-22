@@ -6,9 +6,12 @@ import { Transaction, Totals } from "@/types";
 import TransactionTable from "@/components/TransactionTable";
 import SummaryCards from "@/components/SummaryCards";
 import PlaidLinkButton from "@/components/PlaidLink";
+import OrgSwitcher from "@/components/OrgSwitcher";
+import { useOrg } from "@/context/OrgContext";
 
 export default function Dashboard() {
   const router = useRouter();
+  const { activeOrg, isAdmin, isLoading: orgLoading } = useOrg();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(false);
@@ -22,7 +25,10 @@ export default function Dashboard() {
     category: "",
   });
 
+  const orgId = activeOrg?.org.id;
+
   const loadData = useCallback(async () => {
+    if (!orgId) return;
     setLoading(true);
     try {
       const params: Record<string, unknown> = { limit: 300 };
@@ -34,8 +40,8 @@ export default function Dashboard() {
       if (filters.category) params.category = filters.category;
 
       const [txRes, totalsRes] = await Promise.all([
-        transactionApi.list(params),
-        totalsApi.getSummary(filters.start_date || undefined, filters.end_date || undefined),
+        transactionApi.list(orgId, params),
+        totalsApi.getSummary(orgId, filters.start_date || undefined, filters.end_date || undefined),
       ]);
       setTransactions(txRes.data);
       setTotals(totalsRes.data);
@@ -44,21 +50,28 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, orgId]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !localStorage.getItem("access_token")) {
       router.push("/auth");
       return;
     }
+    if (orgLoading) return;
+    if (!activeOrg) {
+      // No org selected — send to org picker
+      router.push("/orgs");
+      return;
+    }
     loadData();
-  }, [loadData, router]);
+  }, [loadData, router, activeOrg, orgLoading]);
 
   const handleSync = async () => {
+    if (!orgId) return;
     setSyncing(true);
     setSyncMessage("Syncing transactions in background...");
     try {
-      await transactionApi.sync(90);
+      await transactionApi.sync(orgId, 90);
       setSyncMessage("Sync started. Refreshing in 5 seconds...");
       setTimeout(() => {
         loadData();
@@ -72,8 +85,10 @@ export default function Dashboard() {
   };
 
   const handleBatchDownload = async () => {
+    if (!orgId) return;
     try {
       const res = await receiptApi.downloadBatch(
+        orgId,
         filters.start_date || undefined,
         filters.end_date || undefined
       );
@@ -90,8 +105,17 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("active_org_id");
     router.push("/auth");
   };
+
+  if (orgLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-pulse text-gray-400">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -103,14 +127,19 @@ export default function Dashboard() {
             <p className="text-xs text-gray-400 mt-0.5">Business Financial Tracking</p>
           </div>
           <div className="flex items-center gap-3">
-            <PlaidLinkButton onSuccess={handleSync} />
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-900 text-sm font-medium disabled:opacity-50 transition"
-            >
-              {syncing ? "Syncing..." : "Sync (90 days)"}
-            </button>
+            <OrgSwitcher />
+            {isAdmin && orgId && (
+              <PlaidLinkButton orgId={orgId} onSuccess={handleSync} />
+            )}
+            {isAdmin && (
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-900 text-sm font-medium disabled:opacity-50 transition"
+              >
+                {syncing ? "Syncing..." : "Sync (90 days)"}
+              </button>
+            )}
             <button
               onClick={handleBatchDownload}
               className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium transition"
@@ -227,7 +256,7 @@ export default function Dashboard() {
             <div className="animate-pulse text-gray-400">Loading transactions...</div>
           </div>
         ) : (
-          <TransactionTable transactions={transactions} />
+          <TransactionTable orgId={orgId!} transactions={transactions} />
         )}
       </div>
     </div>
