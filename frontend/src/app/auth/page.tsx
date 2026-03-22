@@ -1,7 +1,7 @@
 "use client";
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { authApi, checkHealth, getErrorMessage, API_BASE } from "@/lib/api";
+import { authApi, getErrorMessage } from "@/lib/api";
 import { useOrg } from "@/context/OrgContext";
 
 const features = [
@@ -59,15 +59,6 @@ function AuthForm() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [totpSecret, setTotpSecret] = useState("");
-  const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
-
-  const runHealthCheck = useCallback(async () => {
-    setBackendStatus("checking");
-    const healthy = await checkHealth();
-    setBackendStatus(healthy ? "connected" : "disconnected");
-  }, []);
-
-  useEffect(() => { runHealthCheck(); }, [runHealthCheck]);
 
   const validate = (): string | null => {
     if (mode === "register" && !form.full_name.trim()) return "Full name is required.";
@@ -127,17 +118,8 @@ function AuthForm() {
       </div>
 
       {/* Navbar */}
-      <nav className="relative z-10 flex items-center justify-between px-6 md:px-12 py-5 border-b border-white/5">
+      <nav className="relative z-10 flex items-center px-6 md:px-12 py-5 border-b border-white/5">
         <span className="text-xl font-bold tracking-tight">Clerq</span>
-        <div className="flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${
-            backendStatus === "connected" ? "bg-emerald-400" :
-            backendStatus === "disconnected" ? "bg-red-400" : "bg-yellow-400 animate-pulse"
-          }`} />
-          <span className="text-xs text-white/40">
-            {backendStatus === "connected" ? "API connected" : backendStatus === "disconnected" ? "API unreachable" : "Connecting…"}
-          </span>
-        </div>
       </nav>
 
       {/* Main layout */}
@@ -316,14 +298,6 @@ function AuthForm() {
                   ) : mode === "login" ? "Sign In" : "Create Account"}
                 </button>
               </div>
-
-              {/* Backend status footer */}
-              {backendStatus === "disconnected" && (
-                <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-xl px-3 py-2.5 text-xs text-orange-300">
-                  Cannot reach <code className="font-mono text-orange-200">{API_BASE}</code>. Check that the backend is running.
-                  <button onClick={runHealthCheck} className="ml-2 underline hover:no-underline">Retry</button>
-                </div>
-              )}
 
               <p className="text-center text-xs text-white/25 mt-5">
                 {mode === "login" ? "Don't have an account? " : "Already have an account? "}

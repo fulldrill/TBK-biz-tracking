@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { chatApi } from "@/lib/api";
 
 interface Message {
@@ -22,6 +23,7 @@ function renderMarkdown(text: string): string {
 }
 
 export default function WeshChat() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [input, setInput] = useState("");
@@ -29,6 +31,8 @@ export default function WeshChat() {
   const [popped, setPopped] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isAuthPage = pathname === "/auth";
 
   // Auto-pop open after 1.5 s on first mount
   useEffect(() => {
@@ -75,6 +79,8 @@ export default function WeshChat() {
       setLoading(false);
     }
   };
+
+  if (isAuthPage) return null;
 
   return (
     <>

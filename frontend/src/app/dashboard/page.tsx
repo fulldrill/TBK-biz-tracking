@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { transactionApi, totalsApi, receiptApi } from "@/lib/api";
+import { transactionApi, totalsApi, receiptApi, checkHealth } from "@/lib/api";
 import { exportToCSV } from "@/lib/attribution";
 import { Transaction, Totals } from "@/types";
 import TransactionTable from "@/components/TransactionTable";
@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
   const [filters, setFilters] = useState({
     is_zelle: "" as "" | "true" | "false",
     transaction_type: "",
@@ -60,11 +61,11 @@ export default function Dashboard() {
     }
     if (orgLoading) return;
     if (!activeOrg) {
-      // No org selected — send to org picker
       router.push("/orgs");
       return;
     }
     loadData();
+    checkHealth().then(setApiHealthy);
   }, [loadData, router, activeOrg, orgLoading]);
 
   const handleSync = async () => {
@@ -124,7 +125,15 @@ export default function Dashboard() {
       <div className="bg-white border-b px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Clerq</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-gray-900">Clerq</h1>
+              {apiHealthy !== null && (
+                <span
+                  title={apiHealthy ? "API connected" : "API unreachable — backend may be down"}
+                  className={`w-2 h-2 rounded-full ${apiHealthy ? "bg-emerald-400" : "bg-red-400 animate-pulse"}`}
+                />
+              )}
+            </div>
             <p className="text-xs text-gray-400 mt-0.5">Business Financial Tracking</p>
           </div>
           <div className="flex items-center gap-3">
