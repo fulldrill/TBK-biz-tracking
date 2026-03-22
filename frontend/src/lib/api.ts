@@ -154,4 +154,24 @@ export const inviteApi = {
   redeem: (token: string) => api.post(`/invites/${token}/redeem`),
 };
 
+export const chatApi = {
+  send: (messages: { role: string; content: string }[]) =>
+    api.post<{ reply: string }>("/chat", { messages }),
+};
+
+export const statementApi = {
+  /** Upload a PDF or ZIP — returns parsed transactions for preview (not saved). */
+  parse: (orgId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/orgs/${orgId}/statements/parse`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  /** Persist the previewed transactions into the database. */
+  import: (orgId: string, transactions: unknown[]) =>
+    api.post(`/orgs/${orgId}/statements/import`, { transactions }),
+};
+
 export default api;

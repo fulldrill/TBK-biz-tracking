@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from app.database import get_db, engine, Base, AsyncSessionLocal
 from app.routers import bank, transactions, receipts, totals
-from app.routers import orgs, invites
+from app.routers import orgs, invites, statements, chat
 from app.auth import hash_password, generate_totp_secret, verify_password, verify_totp, create_access_token
 from app.models import User, Organization, OrgMember, OrgRole, BankAccount
 from app.schemas import UserCreate, UserLogin, Token
@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
-    title="BizTrack Receipts API",
+    title="Clerq API",
     version="1.0.0",
-    description="Financial tracking tool with Plaid bank integration and Zelle detection",
+    description="Business financial tracking with Plaid bank integration and Zelle detection",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -54,6 +54,8 @@ app.include_router(totals.router)
 app.include_router(totals.legacy_router)
 app.include_router(orgs.router)
 app.include_router(invites.router)
+app.include_router(statements.router)
+app.include_router(chat.router)
 
 
 def _make_slug(name: str) -> str:
@@ -136,6 +138,14 @@ async def startup():
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "
             "org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"
         ))
+        await conn.execute(text(
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "
+            "assigned_user VARCHAR"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "
+            "source VARCHAR NOT NULL DEFAULT 'plaid'"
+        ))
     os.makedirs("./receipts", exist_ok=True)
     await run_org_migration()
 
@@ -185,4 +195,4 @@ async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "ok", "service": "BizTrack Receipts API", "version": "1.0.0"}
+    return {"status": "ok", "service": "Clerq API", "version": "1.0.0"}

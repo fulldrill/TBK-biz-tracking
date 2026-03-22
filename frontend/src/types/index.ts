@@ -10,6 +10,28 @@ export interface Transaction {
   zelle_counterparty: string | null;
   zelle_direction: "sent" | "received" | null;
   receipt_path: string | null;
+  assigned_user: string | null;
+  source: "plaid" | "statement_import";
+}
+
+/** A transaction returned by the /statements/parse endpoint (not yet saved to DB). */
+export interface ParsedTransaction {
+  date: string;
+  name: string;
+  amount: number;
+  transaction_type: "debit" | "credit";
+  is_zelle: boolean;
+  zelle_counterparty: string | null;
+  zelle_direction: "sent" | "received" | null;
+  category: string | null;
+  assigned_user: string | null;
+  statement_file?: string;
+}
+
+export interface ParseResult {
+  transaction_count: number;
+  transactions: ParsedTransaction[];
+  source_file: string;
 }
 
 export interface Totals {

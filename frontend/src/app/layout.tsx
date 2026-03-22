@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { OrgProvider } from "@/context/OrgContext";
+import WeshChat from "@/components/WeshChat";
 
 export const metadata: Metadata = {
-  title: "BizTrack Receipts",
-  description: "Financial tracking with Plaid bank integration",
+  title: "Clerq",
+  description: "Business financial tracking with Plaid bank integration",
 };
 
 export default function RootLayout({
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <OrgProvider>{children}</OrgProvider>
+        <WeshChat />
       </body>
     </html>
   );

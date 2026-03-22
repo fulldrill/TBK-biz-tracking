@@ -1,6 +1,7 @@
 "use client";
 import { Transaction } from "@/types";
 import { receiptApi } from "@/lib/api";
+import { getAssignedUser } from "@/lib/attribution";
 import { useState } from "react";
 
 interface Props {
@@ -45,7 +46,7 @@ export default function TransactionTable({ orgId, transactions }: Props) {
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
-            {["Date", "Description", "Type", "Zelle", "Amount", "Category", "Receipt"].map((h) => (
+            {["Date", "Description", "Type", "Zelle", "Amount", "Category", "Assigned User", "Receipt"].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 {h}
               </th>
@@ -93,6 +94,26 @@ export default function TransactionTable({ orgId, transactions }: Props) {
               </td>
               <td className="px-4 py-3 text-xs text-gray-500">
                 {tx.category || "Uncategorized"}
+              </td>
+              <td className="px-4 py-3">
+                {(() => {
+                  const user = getAssignedUser(tx);
+                  if (user === "Kenny") {
+                    return (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                        Kenny
+                      </span>
+                    );
+                  }
+                  if (user === "Bright") {
+                    return (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                        Bright
+                      </span>
+                    );
+                  }
+                  return <span className="text-gray-300 text-xs">—</span>;
+                })()}
               </td>
               <td className="px-4 py-3">
                 <button

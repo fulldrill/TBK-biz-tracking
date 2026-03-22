@@ -1,4 +1,4 @@
-# BizTrack Receipts
+# Clerq
 
 Business financial tracking app with Plaid bank integration, Zelle detection, multi-organization support, and PDF receipt generation.
 
@@ -250,7 +250,7 @@ docker compose ps
 docker compose logs -f backend
 ```
 
-Visit `https://yourdomain.com` — you should see the BizTrack login page served over HTTPS.
+Visit `https://yourdomain.com` — you should see the Clerq login page served over HTTPS.
 
 ---
 

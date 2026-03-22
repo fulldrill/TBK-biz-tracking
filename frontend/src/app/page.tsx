@@ -14,7 +14,7 @@ export default function Home() {
   }, [router]);
   return (
     <div className="flex items-center justify-center min-h-screen">
-      <p className="text-gray-500">Loading BizTrack...</p>
+      <p className="text-gray-500">Loading Clerq...</p>
     </div>
   );
 }

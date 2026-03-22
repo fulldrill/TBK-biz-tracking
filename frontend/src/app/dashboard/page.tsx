@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { transactionApi, totalsApi, receiptApi } from "@/lib/api";
+import { exportToCSV } from "@/lib/attribution";
 import { Transaction, Totals } from "@/types";
 import TransactionTable from "@/components/TransactionTable";
 import SummaryCards from "@/components/SummaryCards";
@@ -123,7 +124,7 @@ export default function Dashboard() {
       <div className="bg-white border-b px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">BizTrack Receipts</h1>
+            <h1 className="text-xl font-bold text-gray-900">Clerq</h1>
             <p className="text-xs text-gray-400 mt-0.5">Business Financial Tracking</p>
           </div>
           <div className="flex items-center gap-3">
@@ -140,11 +141,25 @@ export default function Dashboard() {
                 {syncing ? "Syncing..." : "Sync (90 days)"}
               </button>
             )}
+            {isAdmin && (
+              <button
+                onClick={() => router.push("/statements")}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium transition"
+              >
+                Upload Statement
+              </button>
+            )}
             <button
               onClick={handleBatchDownload}
               className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium transition"
             >
               Export PDF
+            </button>
+            <button
+              onClick={() => exportToCSV(transactions)}
+              className="bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 text-sm font-medium transition"
+            >
+              Export CSV
             </button>
             <button
               onClick={handleLogout}

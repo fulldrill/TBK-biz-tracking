@@ -43,9 +43,31 @@ class TransactionOut(BaseModel):
     zelle_counterparty: Optional[str]
     zelle_direction: Optional[str]
     receipt_path: Optional[str]
+    assigned_user: Optional[str] = None
+    source: str = "plaid"
 
     class Config:
         from_attributes = True
+
+
+# --- Statement Parser schemas ---
+
+class ParsedTransaction(BaseModel):
+    """A single transaction extracted from a PDF statement by AI."""
+    date: str                          # "YYYY-MM-DD"
+    name: str
+    amount: float
+    transaction_type: str              # "credit" | "debit"
+    is_zelle: bool = False
+    zelle_counterparty: Optional[str] = None
+    zelle_direction: Optional[str] = None
+    category: Optional[str] = None
+    assigned_user: Optional[str] = None  # Resolved by TBK attribution logic
+
+
+class StatementImportRequest(BaseModel):
+    """Body for the /statements/import endpoint — list of parsed transactions."""
+    transactions: List[ParsedTransaction]
 
 
 class TotalsResponse(BaseModel):
