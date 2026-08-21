@@ -7,10 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from app.database import get_db, engine, Base, AsyncSessionLocal
 from app.routers import bank, transactions, receipts, totals
-from app.routers import orgs, invites, statements, chat
+from app.routers import orgs, invites, statements, chat, loans
 from app.auth import hash_password, generate_totp_secret, verify_password, verify_totp, create_access_token
 from app.services.attribution import assign_user
-from app.models import User, Organization, OrgMember, OrgRole, BankAccount
+from app.models import User, Organization, OrgMember, OrgRole, BankAccount, Loan, LoanRepayment
 from app.schemas import UserCreate, UserLogin, Token
 from fastapi import HTTPException
 import logging
@@ -57,6 +57,7 @@ app.include_router(orgs.router)
 app.include_router(invites.router)
 app.include_router(statements.router)
 app.include_router(chat.router)
+app.include_router(loans.router)
 
 
 def _make_slug(name: str) -> str:
@@ -167,6 +168,7 @@ async def startup():
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "
             "source VARCHAR NOT NULL DEFAULT 'plaid'"
         ))
+        # Loan tables are created by create_all above; no ALTER TABLE needed for new installs
     os.makedirs("./receipts", exist_ok=True)
     await run_org_migration()
     await backfill_assigned_users()

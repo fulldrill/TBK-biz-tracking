@@ -12,6 +12,41 @@ export interface Transaction {
   receipt_path: string | null;
   assigned_user: string | null;
   source: "plaid" | "statement_import";
+  repayment_loan_id?: string | null;
+}
+
+// --- Loan types ---
+
+export type LoanStatus = "active" | "paid_off" | "written_off";
+
+export interface LoanRepayment {
+  id: string;
+  loan_id: string;
+  amount: number;
+  date: string;
+  notes: string | null;
+  transaction_id: string | null;
+  created_at: string;
+}
+
+export interface Loan {
+  id: string;
+  org_id: string;
+  borrower_name: string;
+  principal: number;
+  date_issued: string;
+  notes: string | null;
+  status: LoanStatus;
+  created_at: string;
+  outstanding_balance: number;
+  repayments: LoanRepayment[];
+}
+
+export interface LoanSummary {
+  total_loaned: number;
+  total_repaid: number;
+  total_outstanding: number;
+  active_loan_count: number;
 }
 
 /** A transaction returned by the /statements/parse endpoint (not yet saved to DB). */

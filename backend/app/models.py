@@ -14,6 +14,11 @@ class OrgRole(str, enum.Enum):
     ADMIN = "admin"
     VIEWER = "viewer"
 
+class LoanStatus(str, enum.Enum):
+    ACTIVE = "active"
+    PAID_OFF = "paid_off"
+    WRITTEN_OFF = "written_off"
+
 class User(Base):
     __tablename__ = "users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -107,3 +112,30 @@ class Transaction(Base):
     user = relationship("User", back_populates="transactions")
     org = relationship("Organization", back_populates="transactions")
     account = relationship("BankAccount", back_populates="transactions")
+    loan_repayments = relationship("LoanRepayment", back_populates="transaction")
+
+
+class Loan(Base):
+    __tablename__ = "loans"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    borrower_name = Column(String, nullable=False)
+    principal = Column(Float, nullable=False)
+    date_issued = Column(DateTime, nullable=False)
+    notes = Column(Text, nullable=True)
+    status = Column(Enum(LoanStatus), nullable=False, default=LoanStatus.ACTIVE)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    repayments = relationship("LoanRepayment", back_populates="loan", cascade="all, delete-orphan")
+
+
+class LoanRepayment(Base):
+    __tablename__ = "loan_repayments"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    loan_id = Column(UUID(as_uuid=True), ForeignKey("loans.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Float, nullable=False)
+    date = Column(DateTime, nullable=False)
+    notes = Column(Text, nullable=True)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    loan = relationship("Loan", back_populates="repayments")
+    transaction = relationship("Transaction", back_populates="loan_repayments")

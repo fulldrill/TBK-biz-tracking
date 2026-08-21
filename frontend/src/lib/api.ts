@@ -163,6 +163,21 @@ export const chatApi = {
     api.post<{ reply: string }>("/chat", { messages }),
 };
 
+export const loanApi = {
+  list: (orgId: string) => api.get(`/orgs/${orgId}/loans/`),
+  summary: (orgId: string) => api.get(`/orgs/${orgId}/loans/summary`),
+  get: (orgId: string, loanId: string) => api.get(`/orgs/${orgId}/loans/${loanId}`),
+  create: (orgId: string, data: { borrower_name: string; principal: number; date_issued: string; notes?: string }) =>
+    api.post(`/orgs/${orgId}/loans/`, data),
+  update: (orgId: string, loanId: string, data: Record<string, unknown>) =>
+    api.patch(`/orgs/${orgId}/loans/${loanId}`, data),
+  delete: (orgId: string, loanId: string) => api.delete(`/orgs/${orgId}/loans/${loanId}`),
+  addRepayment: (orgId: string, loanId: string, data: { amount: number; date: string; notes?: string; transaction_id?: string | null }) =>
+    api.post(`/orgs/${orgId}/loans/${loanId}/repayments`, data),
+  deleteRepayment: (orgId: string, loanId: string, repaymentId: string) =>
+    api.delete(`/orgs/${orgId}/loans/${loanId}/repayments/${repaymentId}`),
+};
+
 export const statementApi = {
   /** Upload a PDF or ZIP — returns parsed transactions for preview (not saved). */
   parse: (orgId: string, file: File) => {

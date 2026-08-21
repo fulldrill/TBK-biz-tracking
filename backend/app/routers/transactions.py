@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.database import get_db, AsyncSessionLocal
-from app.models import User, BankAccount, Transaction, TransactionType, OrgRole
+from app.models import User, BankAccount, Transaction, TransactionType, OrgRole, LoanRepayment
 from app.schemas import TransactionOut, TransactionUpdate, BulkDeleteRequest
 from app.auth import get_current_user, require_org_role
 from app.services.plaid_service import fetch_transactions
@@ -125,7 +125,25 @@ async def get_transactions(
         .limit(limit)
         .offset(offset)
     )
-    return result.scalars().all()
+    txns = result.scalars().all()
+
+    # Enrich with repayment_loan_id
+    tx_ids = [tx.id for tx in txns]
+    repayment_map: dict = {}
+    if tx_ids:
+        rep_result = await db.execute(
+            select(LoanRepayment).where(LoanRepayment.transaction_id.in_(tx_ids))
+        )
+        for rep in rep_result.scalars().all():
+            if rep.transaction_id:
+                repayment_map[rep.transaction_id] = rep.loan_id
+
+    out = []
+    for tx in txns:
+        tx_out = TransactionOut.model_validate(tx)
+        tx_out.repayment_loan_id = repayment_map.get(tx.id)
+        out.append(tx_out)
+    return out
 
 
 @router.patch("/{transaction_id}", response_model=TransactionOut)

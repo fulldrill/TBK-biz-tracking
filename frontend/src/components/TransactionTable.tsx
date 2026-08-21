@@ -145,6 +145,9 @@ export default function TransactionTable({
                     {tx.source === "statement_import" && (
                       <span className="shrink-0 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">imported</span>
                     )}
+                    {tx.repayment_loan_id && (
+                      <span className="shrink-0 text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-medium">repayment</span>
+                    )}
                   </div>
                   {tx.is_zelle && tx.zelle_counterparty && (
                     <div className="text-xs text-purple-500 mt-0.5 truncate">{tx.zelle_counterparty}</div>

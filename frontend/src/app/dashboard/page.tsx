@@ -7,6 +7,7 @@ import { Transaction, Totals } from "@/types";
 import TransactionTable from "@/components/TransactionTable";
 import SummaryCards from "@/components/SummaryCards";
 import UserTally from "@/components/UserTally";
+import LoansWidget from "@/components/LoansWidget";
 import PlaidLinkButton from "@/components/PlaidLink";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { useOrg } from "@/context/OrgContext";
@@ -182,6 +183,14 @@ export default function Dashboard() {
                 Upload Statement
               </button>
             )}
+            {isAdmin && (
+              <button
+                onClick={() => router.push("/loans")}
+                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 text-sm font-medium transition"
+              >
+                Loans
+              </button>
+            )}
             <button
               onClick={handleBatchDownload}
               className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium transition"
@@ -216,6 +225,9 @@ export default function Dashboard() {
 
         {/* Per-user tally */}
         <UserTally transactions={transactions} />
+
+        {/* Loans widget */}
+        {orgId && <LoansWidget orgId={orgId} />}
 
         {/* Filters */}
         <div className="bg-white border rounded-xl p-4 mb-4">

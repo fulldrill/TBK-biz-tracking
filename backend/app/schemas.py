@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
-from app.models import OrgRole
+from app.models import OrgRole, LoanStatus
 
 
 class UserCreate(BaseModel):
@@ -45,6 +45,7 @@ class TransactionOut(BaseModel):
     receipt_path: Optional[str]
     assigned_user: Optional[str] = None
     source: str = "plaid"
+    repayment_loan_id: Optional[UUID] = None
 
     class Config:
         from_attributes = True
@@ -146,3 +147,63 @@ class InvitePreview(BaseModel):
     org_id: UUID
     role: OrgRole
     expires_at: datetime
+
+
+# --- Loan schemas ---
+
+class LoanCreate(BaseModel):
+    borrower_name: str
+    principal: float
+    date_issued: datetime
+    notes: Optional[str] = None
+
+
+class LoanUpdate(BaseModel):
+    borrower_name: Optional[str] = None
+    principal: Optional[float] = None
+    date_issued: Optional[datetime] = None
+    notes: Optional[str] = None
+    status: Optional[LoanStatus] = None
+
+
+class RepaymentCreate(BaseModel):
+    amount: float
+    date: datetime
+    notes: Optional[str] = None
+    transaction_id: Optional[str] = None  # UUID string, links to a dashboard transaction
+
+
+class RepaymentOut(BaseModel):
+    id: UUID
+    loan_id: UUID
+    amount: float
+    date: datetime
+    notes: Optional[str]
+    transaction_id: Optional[UUID]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class LoanOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    borrower_name: str
+    principal: float
+    date_issued: datetime
+    notes: Optional[str]
+    status: LoanStatus
+    created_at: datetime
+    outstanding_balance: float
+    repayments: List[RepaymentOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class LoanSummaryOut(BaseModel):
+    total_loaned: float
+    total_repaid: float
+    total_outstanding: float
+    active_loan_count: int
