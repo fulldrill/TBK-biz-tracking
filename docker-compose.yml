@@ -1,8 +1,7 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: biztrack
       POSTGRES_PASSWORD: biztrack_secret
@@ -19,6 +18,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
@@ -37,6 +37,7 @@ services:
       - receipts_data:/app/receipts
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       args:
