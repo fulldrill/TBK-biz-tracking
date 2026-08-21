@@ -178,6 +178,18 @@ export const loanApi = {
     api.delete(`/orgs/${orgId}/loans/${loanId}/repayments/${repaymentId}`),
 };
 
+export const reportApi = {
+  /** Years that have transactions, newest first — drives the year picker. */
+  years: (orgId: string) => api.get<{ years: number[] }>(`/orgs/${orgId}/reports/years`),
+
+  /** Cash-basis P&L. `year` takes precedence over start/end on the backend. */
+  pnl: (orgId: string, params: { year?: number; start_date?: string; end_date?: string }) =>
+    api.get(`/orgs/${orgId}/reports/pnl`, { params }),
+
+  pnlPdf: (orgId: string, params: { year?: number; start_date?: string; end_date?: string }) =>
+    api.get(`/orgs/${orgId}/reports/pnl/pdf`, { params, responseType: "blob" }),
+};
+
 export const statementApi = {
   /** Upload a PDF or ZIP — returns parsed transactions for preview (not saved). */
   parse: (orgId: string, file: File) => {

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from app.database import get_db, engine, Base, AsyncSessionLocal
 from app.routers import bank, transactions, receipts, totals
-from app.routers import orgs, invites, statements, chat, loans
+from app.routers import orgs, invites, statements, chat, loans, reports
 from app.auth import hash_password, generate_totp_secret, verify_password, verify_totp, create_access_token
 from app.services.attribution import assign_user
 from app.models import User, Organization, OrgMember, OrgRole, BankAccount, Loan, LoanRepayment
@@ -58,6 +58,7 @@ app.include_router(invites.router)
 app.include_router(statements.router)
 app.include_router(chat.router)
 app.include_router(loans.router)
+app.include_router(reports.router)
 
 
 def _make_slug(name: str) -> str:

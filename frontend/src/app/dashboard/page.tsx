@@ -191,6 +191,13 @@ export default function Dashboard() {
                 Loans
               </button>
             )}
+            {/* Read-only report — available to viewers, not just admins. */}
+            <button
+              onClick={() => router.push("/reports/pnl")}
+              className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 text-sm font-medium transition"
+            >
+              P&amp;L
+            </button>
             <button
               onClick={handleBatchDownload}
               className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium transition"

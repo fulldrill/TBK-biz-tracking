@@ -80,6 +80,40 @@ export interface Totals {
   period_end: string;
 }
 
+// --- Profit & Loss types ---
+
+export interface PnlLine {
+  label: string;
+  amount: number;
+  count: number;
+  /** Keyed "YYYY-MM" for every month in the period. */
+  monthly: Record<string, number>;
+}
+
+export interface PnlMonth {
+  month: string;
+  revenue: number;
+  expenses: number;
+  net: number;
+}
+
+export interface PnlStatement {
+  period_start: string;
+  period_end: string;
+  basis: string;
+  months: string[];
+  revenue_lines: PnlLine[];
+  total_revenue: number;
+  expense_lines: PnlLine[];
+  total_expenses: number;
+  net_profit: number;
+  margin_pct: number;
+  excluded_lines: PnlLine[];
+  total_excluded: number;
+  monthly_summary: PnlMonth[];
+  transaction_count: number;
+}
+
 export interface BankAccount {
   id: string;
   account_name: string;

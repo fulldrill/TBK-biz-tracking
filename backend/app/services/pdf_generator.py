@@ -1,7 +1,7 @@
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, HRFlowable, PageBreak
 from reportlab.lib import colors
 from datetime import datetime
 from typing import List
@@ -112,3 +112,252 @@ def generate_batch_receipt_pdf(transactions: List[dict], totals: dict, output_pa
     ))
     doc.build(elements)
     return output_path
+
+
+# --- Profit & Loss statement ---
+
+NAVY = colors.HexColor("#1a1a2e")
+SLATE = colors.HexColor("#16213e")
+STEEL = colors.HexColor("#0f3460")
+PROFIT_GREEN = colors.HexColor("#0b6b3a")
+LOSS_RED = colors.HexColor("#a11616")
+
+
+def _money(value: float) -> str:
+    """Accounting format: negatives in parentheses, not with a minus sign."""
+    if value < 0:
+        return f"(${abs(value):,.2f})"
+    return f"${value:,.2f}"
+
+
+def _month_label(key: str, multi_year: bool) -> str:
+    dt = datetime.strptime(key, "%Y-%m")
+    return dt.strftime("%b %y") if multi_year else dt.strftime("%b")
+
+
+def _chunk(items: List, size: int) -> List[List]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
+    """Render a cash-basis P&L: summary page, then monthly breakdown pages."""
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=letter,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+        topMargin=0.7 * inch,
+        bottomMargin=0.7 * inch,
+        title="Profit & Loss Statement",
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    start = pnl["period_start"]
+    end = pnl["period_end"]
+    period_label = f"{start.strftime('%B %d, %Y')} — {end.strftime('%B %d, %Y')}"
+
+    title_style = ParagraphStyle(
+        "PnlTitle", parent=styles["Title"], fontSize=22, textColor=NAVY, spaceAfter=2
+    )
+    elements.append(Paragraph(org_name or "Clerq", title_style))
+    elements.append(Paragraph("Profit &amp; Loss Statement", styles["Heading2"]))
+    elements.append(Paragraph(period_label, styles["Normal"]))
+    elements.append(Paragraph(
+        "<i>Cash basis — recognized when funds moved, not when invoiced.</i>",
+        styles["Normal"],
+    ))
+    elements.append(HRFlowable(width="100%", thickness=1, color=NAVY))
+    elements.append(Spacer(1, 0.25 * inch))
+
+    # --- Summary statement ---
+    rows = [["", "Amount"]]
+    styling = [
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.grey),
+    ]
+
+    def section_header(text: str):
+        rows.append([text, ""])
+        i = len(rows) - 1
+        styling.extend([
+            ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#e8eaf0")),
+            ("FONTNAME", (0, i), (-1, i), "Helvetica-Bold"),
+            ("TEXTCOLOR", (0, i), (-1, i), SLATE),
+        ])
+
+    def total_row(text: str, amount: float):
+        rows.append([text, _money(amount)])
+        i = len(rows) - 1
+        styling.extend([
+            ("FONTNAME", (0, i), (-1, i), "Helvetica-Bold"),
+            ("LINEABOVE", (0, i), (-1, i), 0.75, colors.grey),
+        ])
+
+    section_header("REVENUE")
+    for line in pnl["revenue_lines"]:
+        rows.append([f"    {line['label']}", _money(line["amount"])])
+    if not pnl["revenue_lines"]:
+        rows.append(["    No revenue recorded in this period", _money(0)])
+    total_row("Total Revenue", pnl["total_revenue"])
+
+    rows.append(["", ""])
+    section_header("OPERATING EXPENSES")
+    for line in pnl["expense_lines"]:
+        rows.append([f"    {line['label']}", _money(line["amount"])])
+    if not pnl["expense_lines"]:
+        rows.append(["    No expenses recorded in this period", _money(0)])
+    total_row("Total Operating Expenses", pnl["total_expenses"])
+
+    rows.append(["", ""])
+    net = pnl["net_profit"]
+    rows.append(["NET PROFIT" if net >= 0 else "NET LOSS", _money(net)])
+    net_i = len(rows) - 1
+    styling.extend([
+        ("BACKGROUND", (0, net_i), (-1, net_i), SLATE),
+        ("TEXTCOLOR", (0, net_i), (-1, net_i), colors.white),
+        ("FONTNAME", (0, net_i), (-1, net_i), "Helvetica-Bold"),
+        ("FONTSIZE", (0, net_i), (-1, net_i), 12),
+        ("PADDING", (0, net_i), (-1, net_i), 9),
+    ])
+
+    table = Table(rows, colWidths=[4.6 * inch, 2.4 * inch])
+    table.setStyle(TableStyle(styling))
+    elements.append(table)
+    elements.append(Spacer(1, 0.2 * inch))
+
+    margin_note = f"Net margin: {pnl['margin_pct']}%" if pnl["total_revenue"] else "Net margin: n/a (no revenue)"
+    elements.append(Paragraph(
+        f"{margin_note} &nbsp;·&nbsp; {pnl['transaction_count']} transactions in period",
+        styles["Normal"],
+    ))
+
+    # --- Excluded items ---
+    if pnl["excluded_lines"]:
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph("Excluded from P&amp;L", styles["Heading3"]))
+        ex_rows = [["Category", "Amount"]]
+        for line in pnl["excluded_lines"]:
+            ex_rows.append([line["label"], _money(line["amount"])])
+        ex_rows.append(["Total excluded", _money(pnl["total_excluded"])])
+        ex_table = Table(ex_rows, colWidths=[4.6 * inch, 2.4 * inch])
+        ex_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), STEEL),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+            ("PADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(ex_table)
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Paragraph(
+            "<i>Loan payments are excluded because principal is a balance-sheet movement, "
+            "not an expense. The interest portion is a genuine expense, but bank transaction "
+            "data cannot separate it — ask your accountant to book that adjustment.</i>",
+            styles["Normal"],
+        ))
+
+    # --- Monthly breakdown pages ---
+    months = pnl["months"]
+    if len(months) > 1:
+        multi_year = len({m[:4] for m in months}) > 1
+        for group in _chunk(months, 6):
+            elements.append(PageBreak())
+            elements.append(Paragraph("Monthly Breakdown", styles["Heading2"]))
+            elements.append(Paragraph(
+                f"{_month_label(group[0], multi_year)} – {_month_label(group[-1], multi_year)}",
+                styles["Normal"],
+            ))
+            elements.append(HRFlowable(width="100%", thickness=1, color=NAVY))
+            elements.append(Spacer(1, 0.15 * inch))
+            elements.append(_monthly_table(pnl, group, multi_year))
+
+    elements.append(Spacer(1, 0.35 * inch))
+    elements.append(Paragraph(
+        f"Generated by Clerq on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+        styles["Italic"],
+    ))
+
+    doc.build(elements)
+    return output_path
+
+
+def _monthly_table(pnl: dict, group: List[str], multi_year: bool) -> Table:
+    """Rows are P&L lines, columns are months in `group`, plus a trailing total.
+
+    That trailing column totals only the months shown on this page. When the
+    period is split across pages it is a subtotal — labelling it "Total" while
+    showing the full-period figure next to six columns that sum to something
+    else reads as an arithmetic mistake.
+    """
+    is_partial = len(group) < len(pnl["months"])
+    header = [""] + [_month_label(m, multi_year) for m in group] + (
+        ["Subtotal"] if is_partial else ["Total"]
+    )
+    rows = [header]
+    styling = [
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("PADDING", (0, 0), (-1, -1), 4),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c8ccd8")),
+    ]
+
+    def add_section(title: str, lines: List[dict], total_label: str):
+        rows.append([title] + [""] * (len(group) + 1))
+        i = len(rows) - 1
+        styling.extend([
+            ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#e8eaf0")),
+            ("FONTNAME", (0, i), (-1, i), "Helvetica-Bold"),
+            ("TEXTCOLOR", (0, i), (-1, i), SLATE),
+        ])
+        for line in lines:
+            rows.append(
+                [f"  {line['label']}"]
+                + [_money(line["monthly"].get(m, 0.0)) for m in group]
+                + [_money(sum(line["monthly"].get(m, 0.0) for m in group))]
+            )
+        rows.append(
+            [total_label]
+            + [_money(sum(l["monthly"].get(m, 0.0) for l in lines)) for m in group]
+            + [_money(sum(l["monthly"].get(m, 0.0) for l in lines for m in group))]
+        )
+        t = len(rows) - 1
+        styling.extend([
+            ("FONTNAME", (0, t), (-1, t), "Helvetica-Bold"),
+            ("LINEABOVE", (0, t), (-1, t), 0.6, colors.grey),
+        ])
+
+    add_section("REVENUE", pnl["revenue_lines"], "Total Revenue")
+    add_section("OPERATING EXPENSES", pnl["expense_lines"], "Total Expenses")
+
+    by_month = {m["month"]: m for m in pnl["monthly_summary"]}
+    rows.append(
+        ["NET"]
+        + [_money(by_month.get(m, {}).get("net", 0.0)) for m in group]
+        + [_money(sum(by_month.get(m, {}).get("net", 0.0) for m in group))]
+    )
+    n = len(rows) - 1
+    styling.extend([
+        ("BACKGROUND", (0, n), (-1, n), SLATE),
+        ("TEXTCOLOR", (0, n), (-1, n), colors.white),
+        ("FONTNAME", (0, n), (-1, n), "Helvetica-Bold"),
+        ("PADDING", (0, n), (-1, n), 6),
+    ])
+
+    label_w = 1.85 * inch
+    num_w = (7.0 * inch - label_w) / (len(group) + 1)
+    table = Table(rows, colWidths=[label_w] + [num_w] * (len(group) + 1), repeatRows=1)
+    table.setStyle(TableStyle(styling))
+    return table
