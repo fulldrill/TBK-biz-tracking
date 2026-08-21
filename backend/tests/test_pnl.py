@@ -65,6 +65,43 @@ def test_unknown_category_still_renders():
     assert classify("Brand New Category", "debit") == ("expense", "Brand New Category")
 
 
+# --- raw bank/Plaid category vocabulary ---
+# categorize_transaction passes plaid_category through untouched, so real
+# ledgers carry these labels alongside the categorizer's own.
+
+def test_bank_deposit_is_revenue():
+    assert classify("Deposit", "credit") == ("revenue", "Deposits")
+
+
+def test_bare_zelle_label_splits_by_direction():
+    assert classify("Zelle", "credit") == ("revenue", "Zelle Received")
+    assert classify("Zelle", "debit") == ("expense", "Zelle Payments Out")
+
+
+def test_transfer_is_excluded_both_directions():
+    # Owner-to-business P2P and wires are capital movement, not revenue.
+    assert classify("Transfer", "credit")[0] == "excluded"
+    assert classify("Transfer", "debit")[0] == "excluded"
+
+
+def test_bank_fee_folds_into_bank_fees():
+    assert classify("Fee", "debit")[1] == "Bank Fees"
+
+
+def test_atm_withdrawal_has_its_own_line():
+    assert classify("ATM / Cash", "debit")[1] == "Cash Withdrawals"
+
+
+def test_owner_contribution_stays_out_of_revenue():
+    txs = [
+        _Tx(datetime(2025, 8, 19), 2000.0, "Transfer", "credit"),   # P2P from a partner
+        _Tx(datetime(2025, 8, 20), 500.0, "Deposit", "credit"),     # real revenue
+    ]
+    pnl = build_pnl(txs, datetime(2025, 8, 1), datetime(2025, 8, 31))
+    assert pnl["total_revenue"] == 500.0
+    assert pnl["total_excluded"] == 2000.0
+
+
 # --- month range ---
 
 def test_month_range_spans_year_boundary():

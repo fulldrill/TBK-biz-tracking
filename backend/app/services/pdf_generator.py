@@ -260,8 +260,10 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
         elements.append(ex_table)
         elements.append(Spacer(1, 0.1 * inch))
         elements.append(Paragraph(
-            "<i>Loan payments are excluded because principal is a balance-sheet movement, "
-            "not an expense. The interest portion is a genuine expense, but bank transaction "
+            "<i>These are balance-sheet movements, not income or expense, so they sit outside "
+            "the statement. Transfers are money between the owners' own accounts — booking a "
+            "partner topping up the account as revenue would overstate income. Loan payments "
+            "are principal; the interest portion is a genuine expense, but bank transaction "
             "data cannot separate it — ask your accountant to book that adjustment.</i>",
             styles["Normal"],
         ))

@@ -358,9 +358,11 @@ export default function PnlPage() {
                     </tbody>
                   </table>
                   <p className="text-xs text-gray-500 leading-relaxed">
-                    Loan payments are excluded because principal is a balance-sheet movement, not an
-                    expense. The interest portion is a genuine expense, but bank transaction data
-                    cannot separate it — ask your accountant to book that adjustment.
+                    These are balance-sheet movements, not income or expense, so they sit outside the
+                    statement. Transfers are money between the owners&apos; own accounts — booking a
+                    partner topping up the account as revenue would overstate income. Loan payments
+                    are principal; the interest portion is a genuine expense, but bank transaction
+                    data cannot separate it — ask your accountant to book that adjustment.
                   </p>
                 </div>
               )}

@@ -13,16 +13,33 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Iterable, List, Optional
 
-# Categories that must never hit the P&L. Loan principal moves between the
-# balance sheet and the bank account; only the interest portion is a real
-# expense, and bank transaction data cannot separate the two. We surface these
-# in their own section so the number is visible rather than silently dropped.
-EXCLUDED_CATEGORIES = {"Loan Payments"}
+# Two vocabularies reach the `category` column: the labels from
+# services/categorizer.py, and raw bank/Plaid labels that pass straight through
+# (categorize_transaction returns plaid_category unchanged when present).
+# Both are mapped below — a real ledger contains a mix of the two.
+
+# Categories that must never hit the P&L.
+#
+# "Loan Payments": principal moves between the balance sheet and the bank
+# account; only the interest portion is a real expense, and bank data cannot
+# separate the two.
+#
+# "Transfer": wires and P2P between the owners' own accounts. Booking a partner
+# topping up the account as revenue would overstate income — it is a capital
+# contribution, not a sale.
+#
+# Both are surfaced in their own section so the number stays visible rather
+# than silently dropped.
+EXCLUDED_CATEGORIES = {"Loan Payments", "Transfer"}
 
 # Credit-side (money in) category -> revenue line label.
 REVENUE_LINE_MAP = {
     "Business Revenue": "Business Revenue",
     "Zelle Transfer": "Zelle Received",
+    "Zelle": "Zelle Received",
+    "Deposit": "Deposits",
+    "Payment": "Customer Payments",
+    "Refund": "Refunds & Credits",
 }
 DEFAULT_REVENUE_LINE = "Other Income"
 
@@ -46,15 +63,30 @@ EXPENSE_LINE_MAP = {
     "Healthcare": "Healthcare & Benefits",
     "Bank Fees": "Bank Fees",
     "Zelle Transfer": "Zelle Payments Out",
+    # Raw bank labels
+    "Zelle": "Zelle Payments Out",
+    "Fee": "Bank Fees",
+    "Payment": "Card & Finance Payments",
+    "ATM / Cash": "Cash Withdrawals",
+    "Other": "Other Expenses",
+    "Deposit": "Other Expenses",
 }
 DEFAULT_EXPENSE_LINE = "Uncategorized Expense"
 
 # Display order. Anything not listed sorts after these, alphabetically, so a
 # new category from the categorizer still renders instead of disappearing.
-REVENUE_LINE_ORDER = ["Business Revenue", "Zelle Received", "Other Income"]
+REVENUE_LINE_ORDER = [
+    "Business Revenue",
+    "Deposits",
+    "Zelle Received",
+    "Customer Payments",
+    "Refunds & Credits",
+    "Other Income",
+]
 EXPENSE_LINE_ORDER = [
     "Payroll & Contractors",
     "Zelle Payments Out",
+    "Card & Finance Payments",
     "Rent & Lease",
     "Utilities & Telecom",
     "Insurance",
@@ -65,6 +97,8 @@ EXPENSE_LINE_ORDER = [
     "Meals & Entertainment",
     "Healthcare & Benefits",
     "Bank Fees",
+    "Cash Withdrawals",
+    "Other Expenses",
     "Uncategorized Expense",
 ]
 
