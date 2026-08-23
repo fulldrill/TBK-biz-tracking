@@ -9,6 +9,7 @@ from app.services.plaid_service import fetch_transactions
 from app.services.zelle_parser import parse_zelle
 from app.services.categorizer import categorize_transaction
 from app.services.attribution import assign_user
+from app.services.receipt_cache import invalidate_receipt_cache
 from app.config import settings
 from openai import AsyncOpenAI
 from datetime import datetime
@@ -173,6 +174,11 @@ async def update_transaction(
         # puts the row back in the "needs your note" queue rather than leaving
         # it silently blank.
         tx.purpose_source = "manual" if note else "needs_input"
+
+    # Both fields print on the receipt, which is cached on disk. Without this
+    # the next download would serve the PDF built before the edit.
+    invalidate_receipt_cache(org_id, tx)
+
     await db.commit()
     await db.refresh(tx)
     return tx
@@ -369,10 +375,12 @@ async def generate_business_purposes(
         if source and source != SOURCE_NEEDS_INPUT and note:
             tx.business_purpose = note
             tx.purpose_source = source
+            invalidate_receipt_cache(org_id, tx)
             counts["derived"] += 1
         elif source == SOURCE_NEEDS_INPUT:
             tx.business_purpose = None
             tx.purpose_source = SOURCE_NEEDS_INPUT
+            invalidate_receipt_cache(org_id, tx)
             counts["needs_input"] += 1
         else:
             unresolved.append(tx)
@@ -394,10 +402,12 @@ async def generate_business_purposes(
                     tx.business_purpose = None
                     tx.purpose_source = SOURCE_NEEDS_INPUT
                     counts["needs_input"] += 1
+                invalidate_receipt_cache(org_id, tx)
     else:
         for tx in unresolved:
             tx.business_purpose = None
             tx.purpose_source = SOURCE_NEEDS_INPUT
+            invalidate_receipt_cache(org_id, tx)
             counts["needs_input"] += 1
 
     await db.commit()

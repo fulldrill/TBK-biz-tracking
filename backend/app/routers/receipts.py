@@ -10,6 +10,7 @@ from app.services.pdf_generator import (
     generate_batch_receipt_pdf,
     generate_all_receipts_pdf,
 )
+from app.services.receipt_cache import receipt_path
 from app.config import settings
 from typing import Optional
 from datetime import datetime
@@ -122,14 +123,7 @@ async def get_single_receipt(
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # The layout version is part of the filename: receipts are cached on disk,
-    # so without it every transaction that already has a PDF would keep serving
-    # the old format forever. Bump this whenever the receipt layout changes.
-    pdf_path = os.path.join(
-        settings.RECEIPT_STORAGE_PATH,
-        org_id,
-        f"{tx.plaid_transaction_id}_v2.pdf",
-    )
+    pdf_path = receipt_path(org_id, tx.plaid_transaction_id)
 
     if not os.path.exists(pdf_path):
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
