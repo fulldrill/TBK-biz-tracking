@@ -117,6 +117,13 @@ def purpose_note(category: str, owner: str, org_name: str = "", kind: str = "own
     """The business-purpose line for an owner transfer."""
     entity = f" of {org_name}" if org_name else ""
     if category == CATEGORY_CONTRIBUTION:
+        if kind == "personal":
+            # Not a principal putting capital in — money coming back from
+            # someone the owner paid. Either way the business did not earn it.
+            return (
+                f"Funds returned by {owner}. Not payment for goods or services, "
+                f"so not business income."
+            )
         return (
             f"Capital contributed by {owner}, a principal{entity}. "
             f"An equity contribution, not business income."

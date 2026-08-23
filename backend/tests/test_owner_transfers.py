@@ -206,3 +206,11 @@ def test_org_person_model_has_the_kind_column():
     assert hasattr(OrgPerson, "kind")
     person = OrgPerson(org_id=None, name="Someone", kind="personal")
     assert person.kind == "personal"
+
+
+def test_money_back_from_a_personal_payee_is_not_called_capital():
+    # Calling a returned payment "capital contributed by a principal" would be
+    # wrong on the face of the receipt.
+    note = purpose_note(CATEGORY_CONTRIBUTION, "Marilyn Sheriff", "LITANRYAN", "personal")
+    assert "a principal" not in note
+    assert "not business income" in note
