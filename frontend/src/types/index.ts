@@ -136,6 +136,8 @@ export interface OrgPerson {
   id: string;
   org_id: string;
   name: string;
+  /** Comma-separated other names this person appears under on statements. */
+  aliases?: string | null;
 }
 
 export interface PnlMonth {

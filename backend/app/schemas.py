@@ -252,12 +252,18 @@ class PnlEntryOut(BaseModel):
 
 class OrgPersonCreate(BaseModel):
     name: str
+    aliases: Optional[str] = None
+
+
+class OrgPersonUpdate(BaseModel):
+    aliases: Optional[str] = None
 
 
 class OrgPersonOut(BaseModel):
     id: UUID
     org_id: UUID
     name: str
+    aliases: Optional[str] = None
 
     class Config:
         from_attributes = True

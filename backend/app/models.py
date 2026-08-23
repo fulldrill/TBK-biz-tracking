@@ -174,6 +174,9 @@ class OrgPerson(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, nullable=False)
+    # Comma-separated other names this person appears under on statements —
+    # "Kenny" never matches "Kenneth Manjo" on its own.
+    aliases = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_org_person"),)
     org = relationship("Organization")

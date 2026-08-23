@@ -118,6 +118,11 @@ export const transactionApi = {
     txId: string,
     data: { assigned_user?: string | null; business_purpose?: string | null }
   ) => api.patch(`/orgs/${orgId}/transactions/${txId}`, data),
+  /** Recategorise Zelle to/from the org's own people as equity movement. */
+  reclassifyOwnerTransfers: (orgId: string, dryRun = true) =>
+    api.post(`/orgs/${orgId}/transactions/reclassify-owner-transfers`, null, {
+      params: { dry_run: dryRun },
+    }),
   /** Write a business-purpose note onto every row that lacks one. */
   generatePurposes: (orgId: string, overwrite = false) =>
     api.post(`/orgs/${orgId}/transactions/generate-purposes`, null, {
@@ -159,8 +164,10 @@ export const orgApi = {
     api.delete(`/orgs/${orgId}/members/${userId}`),
   // People a transaction can be attributed to, scoped to this org.
   getPeople: (orgId: string) => api.get(`/orgs/${orgId}/people`),
-  addPerson: (orgId: string, name: string) =>
-    api.post(`/orgs/${orgId}/people`, { name }),
+  addPerson: (orgId: string, name: string, aliases?: string) =>
+    api.post(`/orgs/${orgId}/people`, { name, aliases }),
+  updatePerson: (orgId: string, personId: string, aliases: string) =>
+    api.patch(`/orgs/${orgId}/people/${personId}`, { aliases }),
   removePerson: (orgId: string, personId: string, reassignTo?: string) =>
     api.delete(`/orgs/${orgId}/people/${personId}`, {
       params: reassignTo ? { reassign_to: reassignTo } : undefined,

@@ -19,6 +19,8 @@ export default function OrgSettingsPage() {
 
   const [people, setPeople] = useState<OrgPerson[]>([]);
   const [newPerson, setNewPerson] = useState("");
+  const [editingAlias, setEditingAlias] = useState<string | null>(null);
+  const [aliasDraft, setAliasDraft] = useState("");
   const [peopleError, setPeopleError] = useState("");
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<OrgInvite[]>([]);
@@ -148,6 +150,16 @@ export default function OrgSettingsPage() {
     }
   };
 
+  const handleSaveAliases = async (person: OrgPerson) => {
+    try {
+      const res = await orgApi.updatePerson(orgId, person.id, aliasDraft);
+      setPeople((p) => p.map((x) => (x.id === person.id ? res.data : x)));
+      setEditingAlias(null);
+    } catch {
+      setPeopleError("Could not save those names.");
+    }
+  };
+
   const handleRemovePerson = async (person: OrgPerson) => {
     const others = people.filter((p) => p.id !== person.id).map((p) => p.name);
     const reassign = others.length
@@ -235,7 +247,9 @@ export default function OrgSettingsPage() {
             <p className="text-xs text-gray-500 mb-4">
               Who transactions in this organization can be attributed to. Each org keeps
               its own list — someone who has no part in this business should not appear
-              here.
+              here. Add the other names a person appears under on statements, so
+              transfers to and from them are recognised as owner&apos;s draws rather than
+              expenses.
             </p>
 
             {peopleError && (
@@ -249,15 +263,58 @@ export default function OrgSettingsPage() {
             ) : (
               <ul className="mb-3 divide-y border rounded-lg">
                 {people.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between px-3 py-2">
-                    <span className="text-sm text-gray-800">{p.name}</span>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleRemovePerson(p)}
-                        className="text-xs text-red-600 hover:text-red-700"
-                      >
-                        Remove
-                      </button>
+                  <li key={p.id} className="px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-800">{p.name}</span>
+                      {isAdmin && (
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => {
+                              setAliasDraft(p.aliases || "");
+                              setEditingAlias(p.id);
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            Other names
+                          </button>
+                          <button
+                            onClick={() => handleRemovePerson(p)}
+                            className="text-xs text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {editingAlias === p.id ? (
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={aliasDraft}
+                          onChange={(e) => setAliasDraft(e.target.value)}
+                          placeholder="Kenneth Manjo, K. Manjo"
+                          className="flex-1 border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        <button
+                          onClick={() => handleSaveAliases(p)}
+                          className="text-xs bg-blue-600 text-white px-3 py-1 rounded"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingAlias(null)}
+                          className="text-xs text-gray-500"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      p.aliases && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          also appears as: {p.aliases}
+                        </p>
+                      )
                     )}
                   </li>
                 ))}

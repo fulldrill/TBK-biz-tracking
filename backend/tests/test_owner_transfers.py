@@ -1,0 +1,139 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from app.services.owner_transfers import (
+    owner_tokens,
+    match_owner,
+    classify_owner_transfer,
+    purpose_note,
+    CATEGORY_DRAW,
+    CATEGORY_CONTRIBUTION,
+)
+from app.services.pnl import classify, build_pnl, EXCLUDED_CATEGORIES
+
+
+class _Person:
+    def __init__(self, name, aliases=None):
+        self.name = name
+        self.aliases = aliases
+
+
+BRIGHT = owner_tokens([_Person("Bright")])
+BOTH = owner_tokens([_Person("Bright"), _Person("Kenny", "Kenneth Manjo")])
+
+
+# --- the real name variants from the statements ---
+
+def test_matches_every_spelling_of_the_owner():
+    for variant in ("Bright Litandaze", "BRIGHT AMIBANG", "Bright Amibang",
+                    "Bright Ambang", "Bright-Litanda Amibang"):
+        assert match_owner(variant, BRIGHT) == "Bright", variant
+
+
+def test_alias_covers_a_name_the_first_name_cannot_reach():
+    # "Kenny" shares no token with "Kenneth Manjo".
+    assert match_owner("Kenneth Manjo", owner_tokens([_Person("Kenny")])) is None
+    assert match_owner("Kenneth Manjo", BOTH) == "Kenny"
+
+
+# --- false positives are the real risk here ---
+
+def test_a_different_person_sharing_a_surname_is_not_the_owner():
+    # "Bee Amibang" and "Bright Amibang" share a surname but are not the same
+    # person; matching on the surname would sweep $15,471 out of expenses.
+    assert match_owner("Bee Amibang", BRIGHT) is None
+
+
+def test_unrelated_payees_do_not_match():
+    for other in ("Mimi S", "Ba Hunnington", "Folabi Mojibola", "Gio",
+                  "Yasmine Yvonne", "Tech4 Logistics", "Kya Tax Lady"):
+        assert match_owner(other, BOTH) is None, other
+
+
+def test_generic_tokens_never_match():
+    owners = owner_tokens([_Person("Bright", "The LLC Inc")])
+    assert match_owner("Some Company LLC", owners) is None
+
+
+def test_short_tokens_are_ignored():
+    # A two-letter name must not match everything containing those letters.
+    assert match_owner("BA Huntington", owner_tokens([_Person("Bo")])) is None
+
+
+def test_empty_counterparty_is_safe():
+    assert match_owner(None, BRIGHT) is None
+    assert match_owner("", BRIGHT) is None
+
+
+# --- direction ---
+
+def test_money_out_to_an_owner_is_a_draw():
+    cat, owner = classify_owner_transfer(True, "Bright Litandaze", "sent", "debit", BRIGHT)
+    assert cat == CATEGORY_DRAW
+    assert owner == "Bright"
+
+
+def test_money_in_from_an_owner_is_a_contribution():
+    cat, owner = classify_owner_transfer(True, "BRIGHT AMIBANG", "received", "credit", BRIGHT)
+    assert cat == CATEGORY_CONTRIBUTION
+
+
+def test_direction_follows_transaction_type_not_zelle_direction():
+    # zelle_direction is derived from an inverted sign convention; the
+    # transaction type is authoritative.
+    cat, _ = classify_owner_transfer(True, "Bright Litandaze", "received", "debit", BRIGHT)
+    assert cat == CATEGORY_DRAW
+
+
+def test_non_zelle_rows_are_untouched():
+    cat, owner = classify_owner_transfer(False, "Bright Litandaze", None, "debit", BRIGHT)
+    assert cat is None and owner is None
+
+
+# --- effect on the statement ---
+
+def test_owner_categories_are_excluded_from_the_pnl():
+    assert CATEGORY_DRAW in EXCLUDED_CATEGORIES
+    assert CATEGORY_CONTRIBUTION in EXCLUDED_CATEGORIES
+    assert classify(CATEGORY_DRAW, "debit")[0] == "excluded"
+    assert classify(CATEGORY_CONTRIBUTION, "credit")[0] == "excluded"
+
+
+def test_reclassifying_a_draw_raises_profit_by_that_amount():
+    from datetime import datetime
+
+    class _Type:
+        def __init__(self, v): self.value = v
+
+    class _Tx:
+        def __init__(self, amount, category, ttype):
+            self.date = datetime(2025, 3, 5)
+            self.amount = amount
+            self.category = category
+            self.transaction_type = _Type(ttype)
+
+    revenue = _Tx(10000.0, "Deposit", "credit")
+    before = build_pnl([revenue, _Tx(2000.0, "Zelle", "debit")],
+                       datetime(2025, 3, 1), datetime(2025, 3, 31))
+    after = build_pnl([revenue, _Tx(2000.0, CATEGORY_DRAW, "debit")],
+                      datetime(2025, 3, 1), datetime(2025, 3, 31))
+
+    assert before["total_expenses"] == 2000.0
+    assert after["total_expenses"] == 0.0
+    assert after["net_profit"] - before["net_profit"] == 2000.0
+    assert after["total_excluded"] == 2000.0      # still visible, just not an expense
+
+
+# --- the note that lands on the receipt ---
+
+def test_draw_note_says_it_is_not_an_expense():
+    note = purpose_note(CATEGORY_DRAW, "Bright", "LITANRYAN TECHNOLOGIES")
+    assert "Owner's draw" in note
+    assert "not a business expense" in note
+    assert "LITANRYAN" in note
+
+
+def test_contribution_note_says_it_is_not_income():
+    note = purpose_note(CATEGORY_CONTRIBUTION, "Bright")
+    assert "not business income" in note

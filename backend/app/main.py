@@ -234,6 +234,9 @@ async def startup():
             await conn.execute(text(
                 f"ALTER TABLE transactions ADD COLUMN IF NOT EXISTS {_col} VARCHAR"
             ))
+        await conn.execute(text(
+            "ALTER TABLE org_people ADD COLUMN IF NOT EXISTS aliases VARCHAR"
+        ))
         # Loan tables are created by create_all above; no ALTER TABLE needed for new installs
     os.makedirs("./receipts", exist_ok=True)
     await run_org_migration()

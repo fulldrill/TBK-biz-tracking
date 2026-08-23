@@ -35,9 +35,16 @@ from typing import Iterable, List, Optional
 # draw. The home-office cost belongs on the P&L as a manual rent entry
 # instead; counting both would double-dip.
 #
+# "Owner's Draw" / "Owner's Contribution": paying yourself by Zelle looks like
+# any other payment, but it is equity movement. Booking a draw as an expense
+# understates profit and claims a personal withdrawal as a business cost.
+#
 # All are surfaced in their own section so the number stays visible rather
 # than silently dropped.
-EXCLUDED_CATEGORIES = {"Loan Payments", "Transfer", "Mortgage"}
+EXCLUDED_CATEGORIES = {
+    "Loan Payments", "Transfer", "Mortgage",
+    "Owner's Draw", "Owner's Contribution",
+}
 
 # Categories paid in arrears: the deposit arrives the month after it is earned,
 # so its P&L month is shifted back by one. Everything else uses its own date.

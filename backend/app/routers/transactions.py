@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.database import get_db, AsyncSessionLocal
-from app.models import User, BankAccount, Transaction, TransactionType, OrgRole, LoanRepayment
+from app.models import User, BankAccount, Transaction, TransactionType, OrgRole, LoanRepayment, Organization
 from app.schemas import TransactionOut, TransactionUpdate, BulkDeleteRequest
 from app.auth import get_current_user, require_org_role
 from app.services.plaid_service import fetch_transactions
@@ -413,3 +413,89 @@ async def generate_business_purposes(
     await db.commit()
     logger.info(f"Purpose generation for org {org_id}: {counts}")
     return counts
+
+
+@router.post("/reclassify-owner-transfers")
+async def reclassify_owner_transfers(
+    org_id: str,
+    dry_run: bool = Query(True, description="Preview without writing"),
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recategorise Zelle to/from the org's own people as equity movement.
+
+    Paying yourself by Zelle is indistinguishable from paying a supplier, so
+    these land in operating expenses by default and understate profit. Money
+    out becomes Owner's Draw, money in Owner's Contribution; both are excluded
+    from the P&L and shown in its excluded section.
+
+    Defaults to a dry run because it moves money between P&L sections — call
+    with dry_run=false to apply.
+    """
+    from app.models import OrgPerson
+    from app.services.owner_transfers import (
+        owner_tokens, classify_owner_transfer, purpose_note,
+        CATEGORY_DRAW, CATEGORY_CONTRIBUTION,
+    )
+
+    people = (await db.execute(
+        select(OrgPerson).where(OrgPerson.org_id == org_id)
+    )).scalars().all()
+    owners = owner_tokens(people)
+    if not owners:
+        raise HTTPException(
+            status_code=400,
+            detail="This organization has no people configured, so there is no "
+                   "owner to match against. Add them in settings first.",
+        )
+
+    org = (await db.execute(
+        select(Organization).where(Organization.id == org_id)
+    )).scalar_one_or_none()
+    org_name = org.name if org else ""
+
+    rows = (await db.execute(
+        select(Transaction).where(
+            and_(Transaction.org_id == org_id, Transaction.is_zelle.is_(True))
+        ).order_by(Transaction.date)
+    )).scalars().all()
+
+    changes: list[dict] = []
+    for tx in rows:
+        tx_type = tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type)
+        category, owner = classify_owner_transfer(
+            tx.is_zelle, tx.zelle_counterparty, tx.zelle_direction, tx_type, owners
+        )
+        if not category or tx.category == category:
+            continue
+        changes.append({
+            "id": str(tx.id),
+            "date": tx.date.strftime("%Y-%m-%d"),
+            "counterparty": tx.zelle_counterparty,
+            "amount": abs(tx.amount or 0.0),
+            "from_category": tx.category,
+            "to_category": category,
+            "owner": owner,
+        })
+        if not dry_run:
+            tx.category = category
+            # An owner's own note is an attestation — never overwrite it.
+            if tx.purpose_source != "manual":
+                tx.business_purpose = purpose_note(category, owner, org_name)
+                tx.purpose_source = "derived"
+            invalidate_receipt_cache(org_id, tx)
+
+    if not dry_run and changes:
+        await db.commit()
+
+    draws = [c for c in changes if c["to_category"] == CATEGORY_DRAW]
+    contribs = [c for c in changes if c["to_category"] == CATEGORY_CONTRIBUTION]
+    return {
+        "dry_run": dry_run,
+        "matched_owners": sorted(owners.keys()),
+        "draw_count": len(draws),
+        "draw_total": round(sum(c["amount"] for c in draws), 2),
+        "contribution_count": len(contribs),
+        "contribution_total": round(sum(c["amount"] for c in contribs), 2),
+        "changes": changes,
+    }

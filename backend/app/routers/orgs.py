@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models import User, Organization, OrgMember, OrgRole, OrgPerson, Transaction
 from app.schemas import (
     OrgCreate, OrgOut, OrgMemberOut, UserOrgOut, InviteCreate, InviteOut,
-    OrgPersonCreate, OrgPersonOut,
+    OrgPersonCreate, OrgPersonOut, OrgPersonUpdate,
 )
 from app.auth import get_current_user, require_org_role, generate_invite_token
 from app.models import OrgInvite
@@ -301,7 +301,7 @@ async def add_org_person(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"{name} is already on this org")
 
-    person = OrgPerson(org_id=uuid.UUID(org_id), name=name)
+    person = OrgPerson(org_id=uuid.UUID(org_id), name=name, aliases=body.aliases)
     db.add(person)
     await db.commit()
     await db.refresh(person)
@@ -347,3 +347,29 @@ async def remove_org_person(
         "transactions_reassigned": len(rows),
         "reassigned_to": reassign_to,
     }
+
+
+@router.patch("/{org_id}/people/{person_id}", response_model=OrgPersonOut)
+async def update_org_person(
+    org_id: str,
+    person_id: str,
+    body: OrgPersonUpdate,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the other names this person appears under on statements.
+
+    Comma-separated. Needed wherever a first name cannot reach the printed
+    name — "Kenny" never matches "Kenneth Manjo".
+    """
+    result = await db.execute(
+        select(OrgPerson).where(OrgPerson.id == person_id, OrgPerson.org_id == org_id)
+    )
+    person = result.scalar_one_or_none()
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    if body.aliases is not None:
+        person.aliases = body.aliases.strip() or None
+    await db.commit()
+    await db.refresh(person)
+    return person
