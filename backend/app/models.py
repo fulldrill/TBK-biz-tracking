@@ -177,6 +177,11 @@ class OrgPerson(Base):
     # Comma-separated other names this person appears under on statements —
     # "Kenny" never matches "Kenneth Manjo" on its own.
     aliases = Column(String, nullable=True)
+    # "owner"    — a principal; money out is a draw, money in a contribution.
+    # "personal" — someone the owner pays for family reasons (childcare,
+    #              school). Money out is still a draw: it left the business for
+    #              personal use, and who received it does not change that.
+    kind = Column(String, nullable=False, default="owner")
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_org_person"),)
     org = relationship("Organization")

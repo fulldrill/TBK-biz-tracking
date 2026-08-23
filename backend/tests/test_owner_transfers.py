@@ -197,3 +197,12 @@ def test_kinds_do_not_leak_between_orgs():
     from app.services.owner_transfers import kind_of
     assert kind_of(org_a, "Sam") == "personal"
     assert kind_of(org_b, "Sam") == "owner"
+
+
+def test_org_person_model_has_the_kind_column():
+    # The classification depends on this field existing on the ORM model, not
+    # just in the database — a silently-skipped edit once left it missing.
+    from app.models import OrgPerson
+    assert hasattr(OrgPerson, "kind")
+    person = OrgPerson(org_id=None, name="Someone", kind="personal")
+    assert person.kind == "personal"
