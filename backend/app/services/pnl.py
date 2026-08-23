@@ -89,7 +89,9 @@ EXPENSE_LINE_MAP = {
     "Transportation": "Travel & Transportation",
     "Gas & Fuel": "Travel & Transportation",
     "Food & Dining": "Meals & Entertainment",
-    "Groceries": "Meals & Entertainment",
+    # Groceries stay their own line. Folding them into business meals makes
+    # personal food impossible to separate from a deductible client lunch.
+    "Groceries": "Groceries",
     "Shopping": "Supplies & Equipment",
     "Healthcare": "Healthcare & Benefits",
     "Bank Fees": "Bank Fees",
@@ -132,6 +134,7 @@ EXPENSE_LINE_ORDER = [
     "Supplies & Equipment",
     "Travel & Transportation",
     "Meals & Entertainment",
+    "Groceries",
     "Healthcare & Benefits",
     "Bank Fees",
     "Cash Withdrawals",

@@ -31,11 +31,11 @@ def test_card_categories_fold_into_existing_pnl_lines():
     assert AMEX_CATEGORY_MAP["Banking Services"] == "Bank Fees"
 
 
-def test_unmapped_categories_keep_their_own_line():
-    # "Groceries" is not in the map, so it stays visible as itself rather than
-    # being folded into a business line.
+def test_groceries_stay_separate_from_business_meals():
+    # Folding groceries into Meals & Entertainment makes personal food
+    # impossible to separate from a deductible client lunch.
     assert "Groceries" not in AMEX_CATEGORY_MAP
-    assert classify("Groceries", "debit")[1] == "Meals & Entertainment"
+    assert classify("Groceries", "debit")[1] == "Groceries"
 
 
 # --- the review flag ---
