@@ -205,6 +205,13 @@ export const reportApi = {
     api.patch(`/orgs/${orgId}/reports/entries/${entryId}`, data),
   deleteEntry: (orgId: string, entryId: string) =>
     api.delete(`/orgs/${orgId}/reports/entries/${entryId}`),
+
+  // Lines the user has removed from the statement.
+  listExclusions: (orgId: string) => api.get(`/orgs/${orgId}/reports/exclusions`),
+  excludeLine: (orgId: string, line_label: string) =>
+    api.post(`/orgs/${orgId}/reports/exclusions`, { line_label }),
+  restoreLine: (orgId: string, line_label: string) =>
+    api.delete(`/orgs/${orgId}/reports/exclusions`, { params: { line_label } }),
 };
 
 export const statementApi = {

@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from app.database import get_db
-from app.models import Transaction, Organization, OrgRole, PnlEntry
+from app.models import Transaction, Organization, OrgRole, PnlEntry, PnlExclusion
 from app.schemas import PnlEntryCreate, PnlEntryUpdate, PnlEntryOut
 from app.auth import require_org_role
 from app.services.pnl import build_pnl
@@ -50,6 +50,13 @@ async def _load(db: AsyncSession, org_id: str, start: datetime, end: datetime):
     return result.scalars().all()
 
 
+async def _load_excluded(db: AsyncSession, org_id: str) -> list[str]:
+    result = await db.execute(
+        select(PnlExclusion.line_label).where(PnlExclusion.org_id == org_id)
+    )
+    return list(result.scalars().all())
+
+
 async def _load_manual(db: AsyncSession, org_id: str):
     result = await db.execute(
         select(PnlEntry).where(and_(
@@ -88,7 +95,10 @@ async def get_pnl(
     start, end = _resolve_period(year, start_date, end_date)
     transactions = await _load(db, org_id, start, end)
     manual = await _load_manual(db, org_id)
-    return build_pnl(transactions, start, end, manual_entries=manual)
+    removed = await _load_excluded(db, org_id)
+    return build_pnl(
+        transactions, start, end, manual_entries=manual, excluded_labels=removed
+    )
 
 
 @router.get("/pnl/pdf")
@@ -103,7 +113,10 @@ async def get_pnl_pdf(
     start, end = _resolve_period(year, start_date, end_date)
     transactions = await _load(db, org_id, start, end)
     manual = await _load_manual(db, org_id)
-    pnl = build_pnl(transactions, start, end, manual_entries=manual)
+    removed = await _load_excluded(db, org_id)
+    pnl = build_pnl(
+        transactions, start, end, manual_entries=manual, excluded_labels=removed
+    )
 
     if not pnl["transaction_count"] and not pnl["manual_entry_count"]:
         raise HTTPException(status_code=404, detail="No transactions found for that period")
@@ -162,7 +175,7 @@ async def create_entry(
     entry = PnlEntry(
         org_id=uuid.UUID(org_id),
         label=body.label.strip(),
-        amount=abs(body.amount),
+        amount=body.amount,   # signed: a negative entry subtracts
         entry_type=body.entry_type,
         recurrence=body.recurrence,
         start_date=body.start_date,
@@ -194,8 +207,6 @@ async def update_entry(
         data.get("entry_type", entry.entry_type),
         data.get("recurrence", entry.recurrence),
     )
-    if "amount" in data:
-        data["amount"] = abs(data["amount"])
     for field, value in data.items():
         setattr(entry, field, value)
 
@@ -221,3 +232,71 @@ async def delete_entry(
         raise HTTPException(status_code=404, detail="Entry not found")
     await db.delete(entry)
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Line exclusions — lines the user chooses to keep off the statement
+# ---------------------------------------------------------------------------
+
+@router.get("/exclusions")
+async def list_exclusions(
+    org_id: str,
+    auth=Depends(require_org_role(OrgRole.VIEWER)),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PnlExclusion).where(PnlExclusion.org_id == org_id).order_by(PnlExclusion.line_label)
+    )
+    return [
+        {"id": str(e.id), "line_label": e.line_label}
+        for e in result.scalars().all()
+    ]
+
+
+@router.post("/exclusions", status_code=201)
+async def add_exclusion(
+    org_id: str,
+    body: dict,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    label = (body.get("line_label") or "").strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="line_label is required")
+
+    existing = await db.execute(
+        select(PnlExclusion).where(and_(
+            PnlExclusion.org_id == org_id,
+            PnlExclusion.line_label == label,
+        ))
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        return {"id": str(row.id), "line_label": row.line_label}
+
+    row = PnlExclusion(org_id=uuid.UUID(org_id), line_label=label)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"id": str(row.id), "line_label": row.line_label}
+
+
+@router.delete("/exclusions", status_code=200)
+async def remove_exclusion(
+    org_id: str,
+    line_label: str = Query(..., description="The line to put back on the statement"),
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PnlExclusion).where(and_(
+            PnlExclusion.org_id == org_id,
+            PnlExclusion.line_label == line_label,
+        ))
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="That line is not excluded")
+    await db.delete(row)
+    await db.commit()
+    return {"status": "restored", "line_label": line_label}

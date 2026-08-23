@@ -264,7 +264,10 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
         elements.append(Paragraph("Excluded from P&amp;L", styles["Heading3"]))
         ex_rows = [["Category", "Amount"]]
         for line in pnl["excluded_lines"]:
-            ex_rows.append([line["label"], _money(line["amount"])])
+            label = line["label"]
+            if line.get("user_excluded"):
+                label += "  (removed from statement)"
+            ex_rows.append([label, _money(line["amount"])])
         ex_rows.append(["Total excluded", _money(pnl["total_excluded"])])
         ex_table = Table(ex_rows, colWidths=[4.6 * inch, 2.4 * inch])
         ex_table.setStyle(TableStyle([

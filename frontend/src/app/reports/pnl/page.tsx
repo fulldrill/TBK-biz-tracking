@@ -108,6 +108,26 @@ export default function PnlPage() {
     }
   };
 
+  const handleExclude = async (label: string) => {
+    if (!orgId) return;
+    try {
+      await reportApi.excludeLine(orgId, label);
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleRestore = async (label: string) => {
+    if (!orgId) return;
+    try {
+      await reportApi.restoreLine(orgId, label);
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  };
+
   const multiYear = pnl ? new Set(pnl.months.map((m) => m.slice(0, 4))).size > 1 : false;
   const hasData = pnl && pnl.transaction_count > 0;
 
@@ -132,12 +152,25 @@ export default function PnlPage() {
             )}
           </td>
           <td className="py-2 pr-4 text-right text-gray-400 text-xs">{line.count}</td>
-          <td className="py-2 pr-4 text-right tabular-nums text-gray-900">{fmt(line.amount)}</td>
+          <td className="py-2 pr-4 text-right tabular-nums text-gray-900">
+            {fmtAcct(line.amount)}
+          </td>
+          <td className="py-2 pr-3 text-right w-20">
+            {isAdmin && (
+              <button
+                onClick={() => handleExclude(line.label)}
+                title="Remove this line from the P&L. The money stays visible in the excluded section."
+                className="text-xs text-gray-400 hover:text-red-600 transition"
+              >
+                Remove
+              </button>
+            )}
+          </td>
         </tr>
       ))
     ) : (
       <tr className="border-b">
-        <td className="py-2 pl-6 pr-4 text-gray-400 italic" colSpan={3}>
+        <td className="py-2 pl-6 pr-4 text-gray-400 italic" colSpan={4}>
           {emptyText}
         </td>
       </tr>
@@ -323,11 +356,12 @@ export default function PnlPage() {
                       <th className="text-left py-2.5 px-4 font-semibold">Line item</th>
                       <th className="text-right py-2.5 pr-4 font-semibold w-20">Txns</th>
                       <th className="text-right py-2.5 pr-4 font-semibold w-40">Amount</th>
+                      <th className="w-20" />
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="bg-gray-100">
-                      <td className="py-2 px-4 font-semibold text-gray-700 text-xs uppercase" colSpan={3}>
+                      <td className="py-2 px-4 font-semibold text-gray-700 text-xs uppercase" colSpan={4}>
                         Revenue
                       </td>
                     </tr>
@@ -336,12 +370,13 @@ export default function PnlPage() {
                       <td className="py-2 px-4 text-gray-900">Total Revenue</td>
                       <td />
                       <td className="py-2 pr-4 text-right tabular-nums text-gray-900">
-                        {fmt(pnl.total_revenue)}
+                        {fmtAcct(pnl.total_revenue)}
                       </td>
+                      <td />
                     </tr>
 
                     <tr className="bg-gray-100">
-                      <td className="py-2 px-4 font-semibold text-gray-700 text-xs uppercase" colSpan={3}>
+                      <td className="py-2 px-4 font-semibold text-gray-700 text-xs uppercase" colSpan={4}>
                         Operating Expenses
                       </td>
                     </tr>
@@ -350,8 +385,9 @@ export default function PnlPage() {
                       <td className="py-2 px-4 text-gray-900">Total Operating Expenses</td>
                       <td />
                       <td className="py-2 pr-4 text-right tabular-nums text-gray-900">
-                        {fmt(pnl.total_expenses)}
+                        {fmtAcct(pnl.total_expenses)}
                       </td>
+                      <td />
                     </tr>
 
                     <tr className="bg-gray-900 text-white font-bold">
@@ -362,6 +398,7 @@ export default function PnlPage() {
                       <td className="py-3 pr-4 text-right tabular-nums text-base">
                         {fmtAcct(pnl.net_profit)}
                       </td>
+                      <td />
                     </tr>
                   </tbody>
                 </table>
@@ -377,9 +414,26 @@ export default function PnlPage() {
                     <tbody>
                       {pnl.excluded_lines.map((line) => (
                         <tr key={line.label} className="border-b last:border-0">
-                          <td className="py-1.5 text-gray-700">{line.label}</td>
+                          <td className="py-1.5 text-gray-700">
+                            {line.label}
+                            {line.user_excluded && (
+                              <span className="ml-2 text-xs text-gray-400">
+                                removed by you
+                              </span>
+                            )}
+                          </td>
                           <td className="py-1.5 text-right tabular-nums text-gray-900">
-                            {fmt(line.amount)}
+                            {fmtAcct(line.amount)}
+                          </td>
+                          <td className="py-1.5 text-right w-24">
+                            {isAdmin && line.user_excluded && (
+                              <button
+                                onClick={() => handleRestore(line.label)}
+                                className="text-xs text-blue-600 hover:text-blue-700"
+                              >
+                                Put back
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}

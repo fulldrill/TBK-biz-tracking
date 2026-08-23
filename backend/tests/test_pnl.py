@@ -333,3 +333,99 @@ def test_shifted_deposit_does_not_mask_an_unimported_month():
     pnl = build_pnl(txs, datetime(2025, 5, 1), datetime(2025, 6, 30))
     assert pnl["monthly_summary"][0]["revenue"] == 14000.0   # May shows the revenue
     assert pnl["empty_months"] == ["2025-05"]                # but is still flagged
+
+
+# --- removing a line from the statement ---
+
+def _mixed():
+    return [
+        _Tx(datetime(2025, 3, 5), 10000.0, "Deposit", "credit"),
+        _Tx(datetime(2025, 3, 6), 2000.0, "Zelle", "credit"),
+        _Tx(datetime(2025, 3, 7), 1500.0, "Child Care", "debit"),
+        _Tx(datetime(2025, 3, 8), 500.0, "Utilities", "debit"),
+    ]
+
+
+def test_excluding_an_expense_line_lowers_total_expenses():
+    base = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31))
+    assert base["total_expenses"] == 2000.0
+    assert base["net_profit"] == 10000.0
+
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    excluded_labels=["Child Care"])
+    assert cut["total_expenses"] == 500.0          # 2000 - 1500
+    assert cut["net_profit"] == 11500.0            # net rises by the same 1500
+    assert all(l["label"] != "Child Care" for l in cut["expense_lines"])
+
+
+def test_excluding_a_revenue_line_lowers_total_revenue():
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    excluded_labels=["Zelle Received"])
+    assert cut["total_revenue"] == 10000.0         # 12000 - 2000
+    assert cut["net_profit"] == 8000.0
+
+
+def test_excluded_line_moves_to_the_excluded_section():
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    excluded_labels=["Child Care"])
+    moved = [l for l in cut["excluded_lines"] if l["label"] == "Child Care"]
+    assert len(moved) == 1
+    assert moved[0]["user_excluded"] is True
+    assert moved[0]["amount"] == 1500.0            # the money is still visible
+    assert moved[0]["section"] == "expense"
+
+
+def test_exclusion_updates_the_monthly_columns_too():
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    excluded_labels=["Child Care"])
+    march = cut["monthly_summary"][0]
+    assert march["expenses"] == 500.0
+    assert march["net"] == 11500.0
+
+
+def test_totals_still_reconcile_after_exclusion():
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    excluded_labels=["Child Care", "Zelle Received"])
+    assert round(sum(l["amount"] for l in cut["revenue_lines"]), 2) == cut["total_revenue"]
+    assert round(sum(l["amount"] for l in cut["expense_lines"]), 2) == cut["total_expenses"]
+    assert cut["net_profit"] == round(cut["total_revenue"] - cut["total_expenses"], 2)
+
+
+def test_unknown_exclusion_label_is_harmless():
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    excluded_labels=["Does Not Exist"])
+    assert cut["net_profit"] == 10000.0
+
+
+def test_a_manual_line_can_be_excluded_too():
+    rent = _Entry("Basement Office Rent", 1600.0, "expense", "monthly", datetime(2025, 3, 1))
+    with_rent = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                          manual_entries=[rent])
+    assert with_rent["total_expenses"] == 3600.0
+    cut = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    manual_entries=[rent], excluded_labels=["Basement Office Rent"])
+    assert cut["total_expenses"] == 2000.0
+
+
+# --- manual entries that subtract ---
+
+def test_negative_manual_entry_subtracts_from_expenses():
+    credit = _Entry("Vendor Refund", -300.0, "expense", "once", datetime(2025, 3, 10))
+    pnl = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    manual_entries=[credit])
+    assert pnl["total_expenses"] == 1700.0         # 2000 - 300
+    assert pnl["net_profit"] == 10300.0
+
+
+def test_negative_manual_entry_subtracts_from_revenue():
+    adj = _Entry("Overstated Income", -1000.0, "revenue", "once", datetime(2025, 3, 10))
+    pnl = build_pnl(_mixed(), datetime(2025, 3, 1), datetime(2025, 3, 31),
+                    manual_entries=[adj])
+    assert pnl["total_revenue"] == 11000.0
+    assert pnl["net_profit"] == 9000.0
+
+
+def test_recurring_negative_entry_applies_every_month():
+    adj = _Entry("Monthly Credit", -100.0, "expense", "monthly", datetime(2025, 1, 1))
+    pnl = build_pnl([], datetime(2025, 1, 1), datetime(2025, 12, 31), manual_entries=[adj])
+    assert pnl["total_expenses"] == -1200.0

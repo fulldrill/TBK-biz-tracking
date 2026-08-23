@@ -104,6 +104,10 @@ export interface PnlLine {
   count: number;
   /** True when the line comes from a manual entry rather than bank data. */
   manual: boolean;
+  /** True when the user removed this line from the statement. */
+  user_excluded?: boolean;
+  /** Which section it came from, present only on user-excluded lines. */
+  section?: "revenue" | "expense";
   /** Keyed "YYYY-MM" for every month in the period. */
   monthly: Record<string, number>;
 }

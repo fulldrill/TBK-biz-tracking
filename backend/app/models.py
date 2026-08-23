@@ -138,6 +138,23 @@ class PnlEntry(Base):
     org = relationship("Organization")
 
 
+class PnlExclusion(Base):
+    """A P&L line the user has chosen to keep off the statement.
+
+    Rule-based exclusions (transfers, mortgage) live in services/pnl.py because
+    they are accounting facts. This table is the user's own judgement — a line
+    that is real spending but not a business expense, say. Excluded lines still
+    appear in their own section so the money never silently disappears.
+    """
+    __tablename__ = "pnl_exclusions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    line_label = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("org_id", "line_label", name="uq_pnl_exclusion"),)
+    org = relationship("Organization")
+
+
 class OrgPerson(Base):
     """Someone a transaction can be attributed to, scoped to one org.
 

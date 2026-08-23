@@ -6,6 +6,9 @@ import { PnlEntry, PnlEntryType, PnlRecurrence } from "@/types";
 const fmt = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
+/** Negatives in parentheses, matching the statement. */
+const fmtAcct = (val: number) => (val < 0 ? `(${fmt(Math.abs(val))})` : fmt(val));
+
 interface Props {
   orgId: string;
   isAdmin: boolean;
@@ -130,7 +133,9 @@ export default function PnlEntriesPanel({ orgId, isAdmin, onChanged }: Props) {
           <p className="text-xs text-gray-500 mb-3">
             Costs and income that never hit the bank account — the rent you owe for the
             basement office, cash sales, an adjustment your accountant asked for. These
-            appear on the P&amp;L marked with an asterisk.
+            appear on the P&amp;L marked with an asterisk. Use a{" "}
+            <strong>negative amount</strong> to subtract instead of add, for a refund or
+            a correction.
           </p>
 
           {error && (
@@ -182,8 +187,12 @@ export default function PnlEntriesPanel({ orgId, isAdmin, onChanged }: Props) {
                       {e.recurrence === "monthly" &&
                         ` → ${e.end_date ? e.end_date.slice(0, 10) : "ongoing"}`}
                     </td>
-                    <td className="py-2 text-right tabular-nums text-gray-900">
-                      {fmt(e.amount)}
+                    <td
+                      className={`py-2 text-right tabular-nums ${
+                        e.amount < 0 ? "text-blue-700" : "text-gray-900"
+                      }`}
+                    >
+                      {fmtAcct(e.amount)}
                       {e.recurrence === "monthly" && (
                         <span className="text-xs text-gray-400">/mo</span>
                       )}
@@ -237,7 +246,7 @@ export default function PnlEntriesPanel({ orgId, isAdmin, onChanged }: Props) {
                   <input
                     type="number"
                     step="0.01"
-                    placeholder="1600.00"
+                    placeholder="1600.00 (or -300 to subtract)"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="w-32 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"

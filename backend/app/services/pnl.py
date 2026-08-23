@@ -192,6 +192,7 @@ def _build_lines(bucket: dict, months: List[str], order: List[str]) -> List[dict
             "amount": round(entry["amount"], 2),
             "count": entry["count"],
             "manual": entry.get("manual", False),
+            "user_excluded": False,
             "monthly": {m: round(entry["monthly"].get(m, 0.0), 2) for m in months},
         })
     return lines
@@ -221,7 +222,9 @@ def expand_manual_entries(entries: Iterable, months: List[str]) -> List[tuple]:
             continue
         start = e.start_date
         end = e.end_date
-        amount = abs(e.amount or 0.0)
+        # Signed on purpose: a negative entry subtracts from its section, which
+        # is how a correction or partial credit gets recorded.
+        amount = e.amount or 0.0
 
         if e.recurrence == "once":
             key = start.strftime("%Y-%m")
@@ -246,6 +249,7 @@ def build_pnl(
     period_start: datetime,
     period_end: datetime,
     manual_entries: Optional[Iterable] = None,
+    excluded_labels: Optional[Iterable[str]] = None,
 ) -> dict:
     """Aggregate transactions and manual entries into a P&L statement.
 
@@ -294,6 +298,18 @@ def build_pnl(
     revenue_lines = _build_lines(revenue, months, REVENUE_LINE_ORDER)
     expense_lines = _build_lines(expense, months, EXPENSE_LINE_ORDER)
     excluded_lines = _build_lines(excluded, months, [])
+
+    # Lines the user has removed from the statement. They move to the excluded
+    # section rather than vanishing, and every total below is computed after
+    # this step so the sums stay consistent.
+    removed = set(excluded_labels or ())
+    if removed:
+        for lines, section in ((revenue_lines, "revenue"), (expense_lines, "expense")):
+            for line in lines:
+                if line["label"] in removed:
+                    excluded_lines.append({**line, "user_excluded": True, "section": section})
+        revenue_lines = [l for l in revenue_lines if l["label"] not in removed]
+        expense_lines = [l for l in expense_lines if l["label"] not in removed]
 
     total_revenue = round(sum(line["amount"] for line in revenue_lines), 2)
     total_expenses = round(sum(line["amount"] for line in expense_lines), 2)
