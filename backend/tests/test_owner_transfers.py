@@ -137,3 +137,62 @@ def test_draw_note_says_it_is_not_an_expense():
 def test_contribution_note_says_it_is_not_income():
     note = purpose_note(CATEGORY_CONTRIBUTION, "Bright")
     assert "not business income" in note
+
+
+# --- personal payees: money out for family is still a draw ---
+
+def _people(*specs):
+    return owner_tokens([_Person(n, a) if k == "owner" else _PersonalPerson(n, a)
+                         for n, a, k in specs])
+
+
+class _PersonalPerson:
+    def __init__(self, name, aliases=None):
+        self.name = name
+        self.aliases = aliases
+        self.kind = "personal"
+
+
+PERSONAL = owner_tokens([_Person("Bright"), _PersonalPerson("Mimi S")])
+
+
+def test_paying_a_personal_payee_is_a_draw():
+    # Childcare for the owner's own children is not a business cost; the money
+    # left the business for personal use regardless of who received it.
+    cat, who = classify_owner_transfer(True, "Mimi S", "sent", "debit", PERSONAL)
+    assert cat == CATEGORY_DRAW
+    assert who == "Mimi S"
+
+
+def test_money_in_from_a_personal_payee_is_not_a_capital_contribution():
+    # Only a principal contributes capital. A refund from a childcare provider
+    # is income until shown otherwise, so it is left alone.
+    cat, who = classify_owner_transfer(True, "Mimi S", "received", "credit", PERSONAL)
+    assert cat is None and who is None
+
+
+def test_owners_still_contribute_capital():
+    cat, _ = classify_owner_transfer(True, "Bright Litandaze", "received", "credit", PERSONAL)
+    assert cat == CATEGORY_CONTRIBUTION
+
+
+def test_personal_draw_note_says_why():
+    from app.services.owner_transfers import kind_of
+    note = purpose_note(CATEGORY_DRAW, "Mimi S", "LITANRYAN", kind_of(PERSONAL, "Mimi S"))
+    assert "personal and family" in note
+    assert "not a business expense" in note
+
+
+def test_owner_draw_note_is_unchanged():
+    from app.services.owner_transfers import kind_of
+    note = purpose_note(CATEGORY_DRAW, "Bright", "LITANRYAN", kind_of(PERSONAL, "Bright"))
+    assert "a principal" in note
+
+
+def test_kinds_do_not_leak_between_orgs():
+    # Two orgs classified in the same process must not see each other's people.
+    org_a = owner_tokens([_PersonalPerson("Sam")])
+    org_b = owner_tokens([_Person("Sam")])
+    from app.services.owner_transfers import kind_of
+    assert kind_of(org_a, "Sam") == "personal"
+    assert kind_of(org_b, "Sam") == "owner"

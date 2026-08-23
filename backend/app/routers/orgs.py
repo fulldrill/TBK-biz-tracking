@@ -301,7 +301,11 @@ async def add_org_person(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"{name} is already on this org")
 
-    person = OrgPerson(org_id=uuid.UUID(org_id), name=name, aliases=body.aliases)
+    if body.kind not in ("owner", "personal"):
+        raise HTTPException(status_code=422, detail="kind must be 'owner' or 'personal'")
+    person = OrgPerson(
+        org_id=uuid.UUID(org_id), name=name, aliases=body.aliases, kind=body.kind
+    )
     db.add(person)
     await db.commit()
     await db.refresh(person)
@@ -370,6 +374,10 @@ async def update_org_person(
         raise HTTPException(status_code=404, detail="Person not found")
     if body.aliases is not None:
         person.aliases = body.aliases.strip() or None
+    if body.kind is not None:
+        if body.kind not in ("owner", "personal"):
+            raise HTTPException(status_code=422, detail="kind must be 'owner' or 'personal'")
+        person.kind = body.kind
     await db.commit()
     await db.refresh(person)
     return person

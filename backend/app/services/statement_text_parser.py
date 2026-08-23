@@ -288,7 +288,7 @@ def enrich(
     from app.services.categorizer import categorize_transaction
     from app.services.zelle_parser import is_zelle_transaction
     from app.services.owner_transfers import (
-        owner_tokens, classify_owner_transfer, purpose_note,
+        owner_tokens, classify_owner_transfer, purpose_note, kind_of,
     )
 
     # Transfers to and from the org's own people are equity movement, not
@@ -326,7 +326,9 @@ def enrich(
         )
         if owner_category:
             tx["category"] = owner_category
-            tx["business_purpose"] = purpose_note(owner_category, owner)
+            tx["business_purpose"] = purpose_note(
+                owner_category, owner, kind=kind_of(owners, owner)
+            )
             tx["purpose_source"] = "derived"
         tx["source"] = "statement_import"
         tx["statement_file"] = filename

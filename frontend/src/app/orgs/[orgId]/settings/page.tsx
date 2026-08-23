@@ -152,11 +152,21 @@ export default function OrgSettingsPage() {
 
   const handleSaveAliases = async (person: OrgPerson) => {
     try {
-      const res = await orgApi.updatePerson(orgId, person.id, aliasDraft);
+      const res = await orgApi.updatePerson(orgId, person.id, { aliases: aliasDraft });
       setPeople((p) => p.map((x) => (x.id === person.id ? res.data : x)));
       setEditingAlias(null);
     } catch {
       setPeopleError("Could not save those names.");
+    }
+  };
+
+  const handleToggleKind = async (person: OrgPerson) => {
+    const next = person.kind === "personal" ? "owner" : "personal";
+    try {
+      const res = await orgApi.updatePerson(orgId, person.id, { kind: next });
+      setPeople((p) => p.map((x) => (x.id === person.id ? res.data : x)));
+    } catch {
+      setPeopleError("Could not change that.");
     }
   };
 
@@ -250,6 +260,11 @@ export default function OrgSettingsPage() {
               here. Add the other names a person appears under on statements, so
               transfers to and from them are recognised as owner&apos;s draws rather than
               expenses.
+              <br />
+              <strong>Owner</strong> — a principal: money out is a draw, money in a
+              capital contribution. <strong>Personal payee</strong> — someone you pay
+              for family reasons such as childcare or school: money out is still a
+              draw, because it left the business for personal use.
             </p>
 
             {peopleError && (
@@ -265,9 +280,26 @@ export default function OrgSettingsPage() {
                 {people.map((p) => (
                   <li key={p.id} className="px-3 py-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-800">{p.name}</span>
+                      <span className="text-sm text-gray-800">
+                        {p.name}
+                        <span
+                          className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+                            p.kind === "personal"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {p.kind === "personal" ? "personal payee" : "owner"}
+                        </span>
+                      </span>
                       {isAdmin && (
                         <div className="flex gap-3">
+                          <button
+                            onClick={() => handleToggleKind(p)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            {p.kind === "personal" ? "Make owner" : "Make personal"}
+                          </button>
                           <button
                             onClick={() => {
                               setAliasDraft(p.aliases || "");

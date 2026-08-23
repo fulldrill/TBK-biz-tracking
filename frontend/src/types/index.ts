@@ -138,6 +138,8 @@ export interface OrgPerson {
   name: string;
   /** Comma-separated other names this person appears under on statements. */
   aliases?: string | null;
+  /** "owner" — a principal. "personal" — someone paid for family reasons. */
+  kind?: string;
 }
 
 export interface PnlMonth {

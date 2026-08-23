@@ -434,7 +434,7 @@ async def reclassify_owner_transfers(
     """
     from app.models import OrgPerson
     from app.services.owner_transfers import (
-        owner_tokens, classify_owner_transfer, purpose_note,
+        owner_tokens, classify_owner_transfer, purpose_note, kind_of,
         CATEGORY_DRAW, CATEGORY_CONTRIBUTION,
     )
 
@@ -481,7 +481,9 @@ async def reclassify_owner_transfers(
             tx.category = category
             # An owner's own note is an attestation — never overwrite it.
             if tx.purpose_source != "manual":
-                tx.business_purpose = purpose_note(category, owner, org_name)
+                tx.business_purpose = purpose_note(
+                    category, owner, org_name, kind_of(owners, owner)
+                )
                 tx.purpose_source = "derived"
             invalidate_receipt_cache(org_id, tx)
 

@@ -164,10 +164,13 @@ export const orgApi = {
     api.delete(`/orgs/${orgId}/members/${userId}`),
   // People a transaction can be attributed to, scoped to this org.
   getPeople: (orgId: string) => api.get(`/orgs/${orgId}/people`),
-  addPerson: (orgId: string, name: string, aliases?: string) =>
-    api.post(`/orgs/${orgId}/people`, { name, aliases }),
-  updatePerson: (orgId: string, personId: string, aliases: string) =>
-    api.patch(`/orgs/${orgId}/people/${personId}`, { aliases }),
+  addPerson: (orgId: string, name: string, aliases?: string, kind = "owner") =>
+    api.post(`/orgs/${orgId}/people`, { name, aliases, kind }),
+  updatePerson: (
+    orgId: string,
+    personId: string,
+    data: { aliases?: string; kind?: string }
+  ) => api.patch(`/orgs/${orgId}/people/${personId}`, data),
   removePerson: (orgId: string, personId: string, reassignTo?: string) =>
     api.delete(`/orgs/${orgId}/people/${personId}`, {
       params: reassignTo ? { reassign_to: reassignTo } : undefined,

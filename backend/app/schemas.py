@@ -255,10 +255,12 @@ class PnlEntryOut(BaseModel):
 class OrgPersonCreate(BaseModel):
     name: str
     aliases: Optional[str] = None
+    kind: str = "owner"          # "owner" | "personal"
 
 
 class OrgPersonUpdate(BaseModel):
     aliases: Optional[str] = None
+    kind: Optional[str] = None
 
 
 class OrgPersonOut(BaseModel):
@@ -266,6 +268,7 @@ class OrgPersonOut(BaseModel):
     org_id: UUID
     name: str
     aliases: Optional[str] = None
+    kind: str = "owner"
 
     class Config:
         from_attributes = True

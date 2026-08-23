@@ -46,9 +46,14 @@ EXCLUDED_CATEGORIES = {
     "Owner's Draw", "Owner's Contribution",
 }
 
-# Categories paid in arrears: the deposit arrives the month after it is earned,
-# so its P&L month is shifted back by one. Everything else uses its own date.
-DEFERRED_REVENUE_CATEGORIES = {"Gross Revenue"}
+# Categories to book in the month earned rather than the month received.
+#
+# Empty by default: the statement is cash basis, which is the standard for
+# self-employment reporting and what income verification expects — every figure
+# ties to a deposit visible on a bank statement, and revenue not yet received is
+# not counted. Add a category here to shift it back a month instead; the
+# machinery below supports it and the statement relabels itself when used.
+DEFERRED_REVENUE_CATEGORIES: set[str] = set()
 
 # Credit-side (money in) category -> revenue line label.
 REVENUE_LINE_MAP = {

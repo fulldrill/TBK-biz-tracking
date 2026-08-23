@@ -47,23 +47,32 @@ def owner_tokens(people: Iterable) -> dict[str, set[str]]:
     """Map each person to the tokens that identify them.
 
     `people` may be OrgPerson rows or plain strings. Rows carry an optional
-    comma-separated `aliases` field for the names a first name cannot reach.
+    comma-separated `aliases` field for the names a first name cannot reach,
+    and a `kind` of "owner" or "personal".
     """
     out: dict[str, set[str]] = {}
     for person in people or ():
         if isinstance(person, str):
-            name, aliases = person, ""
+            name, aliases, kind = person, "", "owner"
         else:
             name = getattr(person, "name", "") or ""
             aliases = getattr(person, "aliases", "") or ""
+            kind = getattr(person, "kind", "owner") or "owner"
         if not name:
             continue
         toks = _tokens(name)
         for alias in aliases.split(","):
             toks |= _tokens(alias)
         if toks:
-            out[name] = toks
+            # (tokens, kind) rather than a module-level side table: two orgs can
+            # be classified concurrently and must not see each other's people.
+            out[name] = (toks, kind)
     return out
+
+
+def kind_of(owners: dict, name: str) -> str:
+    entry = owners.get(name)
+    return entry[1] if entry else "owner"
 
 
 def match_owner(counterparty: Optional[str], owners: dict[str, set[str]]) -> Optional[str]:
@@ -73,7 +82,7 @@ def match_owner(counterparty: Optional[str], owners: dict[str, set[str]]) -> Opt
     party = _tokens(counterparty)
     if not party:
         return None
-    for name, toks in owners.items():
+    for name, (toks, _kind) in owners.items():
         if party & toks:
             return name
     return None
@@ -97,17 +106,27 @@ def classify_owner_transfer(
     if not owner:
         return (None, None)
     if transaction_type == "credit":
+        # Only a principal can contribute capital. Money arriving from someone
+        # the owner merely pays is income until shown otherwise, so it is left
+        # alone rather than being written off as equity.
+        if kind_of(owners, owner) == "personal":
+            return (None, None)
         return (CATEGORY_CONTRIBUTION, owner)
     return (CATEGORY_DRAW, owner)
 
 
-def purpose_note(category: str, owner: str, org_name: str = "") -> str:
+def purpose_note(category: str, owner: str, org_name: str = "", kind: str = "owner") -> str:
     """The business-purpose line for an owner transfer."""
     entity = f" of {org_name}" if org_name else ""
     if category == CATEGORY_CONTRIBUTION:
         return (
             f"Capital contributed by {owner}, a principal{entity}. "
             f"An equity contribution, not business income."
+        )
+    if kind == "personal":
+        return (
+            f"Owner's draw — paid to {owner} for the owner's personal and family "
+            f"expenses. An equity withdrawal, not a business expense."
         )
     return (
         f"Owner's draw taken by {owner}, a principal{entity}. "

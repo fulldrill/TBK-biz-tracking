@@ -198,12 +198,22 @@ def test_rows_outside_the_period_are_excluded():
 
 # --- deferred revenue: CMCI payroll lands the month after it is earned ---
 
-def test_gross_revenue_shifts_to_month_earned():
-    from app.services.pnl import effective_date
-    # Paid 15 Jan, earned in December.
-    assert effective_date(datetime(2025, 1, 15), "Gross Revenue").strftime("%Y-%m") == "2024-12"
-    # Everything else books on its own date.
-    assert effective_date(datetime(2025, 1, 15), "Deposit").strftime("%Y-%m") == "2025-01"
+def test_cash_basis_is_the_default():
+    # Self-employment reporting is cash basis: revenue counts when received.
+    from app.services.pnl import DEFERRED_REVENUE_CATEGORIES, effective_date
+    assert DEFERRED_REVENUE_CATEGORIES == set()
+    assert effective_date(datetime(2025, 1, 15), "Gross Revenue").strftime("%Y-%m") == "2025-01"
+
+
+def test_deferring_a_category_books_it_to_the_month_earned():
+    # The machinery stays available for revenue genuinely paid in arrears.
+    from app.services import pnl as pnl_mod
+    pnl_mod.DEFERRED_REVENUE_CATEGORIES.add("Deferred")
+    try:
+        assert pnl_mod.effective_date(datetime(2025, 1, 15), "Deferred").strftime("%Y-%m") == "2024-12"
+        assert pnl_mod.effective_date(datetime(2025, 1, 15), "Deposit").strftime("%Y-%m") == "2025-01"
+    finally:
+        pnl_mod.DEFERRED_REVENUE_CATEGORIES.discard("Deferred")
 
 
 def test_shift_month_clamps_short_months():
@@ -214,22 +224,34 @@ def test_shift_month_clamps_short_months():
     assert shift_month(datetime(2025, 1, 10), -1).date() == datetime(2024, 12, 10).date()
 
 
-def test_deposit_after_period_end_counts_inside_it():
-    # A Jan-2026 payroll deposit is December-2025 revenue and belongs in FY2025.
-    txs = [_Tx(datetime(2026, 1, 15), 12000.0, "Gross Revenue", "credit")]
+def test_a_deposit_counts_in_the_year_it_was_received():
+    # Cash basis: the 15 Jan 2025 deposit is 2025 revenue, not 2024.
+    txs = [_Tx(datetime(2025, 1, 15), 12000.0, "Gross Revenue", "credit")]
     pnl = build_pnl(txs, datetime(2025, 1, 1), datetime(2025, 12, 31, 23, 59, 59))
     assert pnl["total_revenue"] == 12000.0
-    assert pnl["monthly_summary"][-1]["month"] == "2025-12"
-    assert pnl["monthly_summary"][-1]["revenue"] == 12000.0
-    assert pnl["basis"] == "accrual-adjusted"
+    assert pnl["monthly_summary"][0]["revenue"] == 12000.0
+    assert pnl["basis"] == "cash"
 
 
-def test_deposit_in_january_belongs_to_prior_year():
-    # The Jan-2025 deposit is December-2024 revenue, so FY2025 must not claim it.
-    txs = [_Tx(datetime(2025, 1, 15), 12000.0, "Gross Revenue", "credit")]
+def test_a_deposit_received_next_year_is_not_claimed():
+    # Money arriving 15 Jan 2026 is 2026 revenue, however it was earned.
+    txs = [_Tx(datetime(2026, 1, 15), 12000.0, "Gross Revenue", "credit")]
     pnl = build_pnl(txs, datetime(2025, 1, 1), datetime(2025, 12, 31, 23, 59, 59))
     assert pnl["total_revenue"] == 0.0
     assert pnl["transaction_count"] == 0
+
+
+def test_a_deferred_category_still_shifts_when_configured():
+    from app.services import pnl as pnl_mod
+    pnl_mod.DEFERRED_REVENUE_CATEGORIES.add("Deferred")
+    try:
+        txs = [_Tx(datetime(2026, 1, 15), 12000.0, "Deferred", "credit")]
+        pnl = build_pnl(txs, datetime(2025, 1, 1), datetime(2025, 12, 31, 23, 59, 59))
+        assert pnl["total_revenue"] == 12000.0
+        assert pnl["monthly_summary"][-1]["month"] == "2025-12"
+        assert pnl["basis"] == "accrual-adjusted"
+    finally:
+        pnl_mod.DEFERRED_REVENUE_CATEGORIES.discard("Deferred")
 
 
 def test_mortgage_is_excluded():
@@ -324,15 +346,20 @@ def test_manual_entries_do_not_mask_missing_statements():
 
 
 def test_shifted_deposit_does_not_mask_an_unimported_month():
-    # June's statement is present; May's is not. June's deposit shifts back
-    # into May, which must NOT make May look covered.
-    txs = [
-        _Tx(datetime(2025, 6, 13), 14000.0, "Gross Revenue", "credit"),
-        _Tx(datetime(2025, 6, 20), 300.0, "Utilities", "debit"),
-    ]
-    pnl = build_pnl(txs, datetime(2025, 5, 1), datetime(2025, 6, 30))
-    assert pnl["monthly_summary"][0]["revenue"] == 14000.0   # May shows the revenue
-    assert pnl["empty_months"] == ["2025-05"]                # but is still flagged
+    # With deferral configured, June's deposit shifts back into May. May's own
+    # statement is missing, and that must still be reported.
+    from app.services import pnl as pnl_mod
+    pnl_mod.DEFERRED_REVENUE_CATEGORIES.add("Deferred")
+    try:
+        txs = [
+            _Tx(datetime(2025, 6, 13), 14000.0, "Deferred", "credit"),
+            _Tx(datetime(2025, 6, 20), 300.0, "Utilities", "debit"),
+        ]
+        pnl = build_pnl(txs, datetime(2025, 5, 1), datetime(2025, 6, 30))
+        assert pnl["monthly_summary"][0]["revenue"] == 14000.0   # May shows it
+        assert pnl["empty_months"] == ["2025-05"]                # still flagged
+    finally:
+        pnl_mod.DEFERRED_REVENUE_CATEGORIES.discard("Deferred")
 
 
 # --- removing a line from the statement ---
