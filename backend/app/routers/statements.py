@@ -210,6 +210,8 @@ async def import_statement_transactions(
             statement_file=tx.statement_file,
             statement_period=tx.statement_period,
             account_label=tx.account_label,
+            business_purpose=tx.business_purpose,
+            purpose_source=tx.purpose_source,
         )
         db.add(record)
         inserted += 1

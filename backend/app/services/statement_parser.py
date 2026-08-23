@@ -26,6 +26,11 @@ from app.services.statement_text_parser import (
     parse_statement_text,
     enrich,
 )
+from app.services.statement_amex_parser import (
+    is_amex_report,
+    parse_amex_report,
+    enrich_amex,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +229,37 @@ async def parse_pdf_bytes(
     # statement's own printed totals confirm nothing was dropped. Vision is the
     # fallback for scans, where it is the only option.
     if has_text_layer(pdf_bytes):
+        # A card report is laid out nothing like a bank statement, so it needs
+        # its own parser. Check for it before falling through to the bank path.
+        probe = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            head = "".join(probe[i].get_text() for i in range(min(2, len(probe))))
+        finally:
+            probe.close()
+
+        if is_amex_report(head):
+            card = parse_amex_report(pdf_bytes, filename)
+            if card["checks"]["ok"] and card["transactions"]:
+                txns = enrich_amex(
+                    card["transactions"], filename, card["account"], card["period_end"]
+                )
+                logger.info(f"  → Amex report: {len(txns)} charge(s), reconciles")
+                if reports is not None:
+                    reports.append({
+                        "file": filename,
+                        "method": "text",
+                        "pages": 0,
+                        "transactions": len(txns),
+                        "failed_pages": [],
+                        "period_end": card["period_end"],
+                        "reconciled": True,
+                        "months": sorted({t["date"][:7] for t in txns}),
+                    })
+                return txns
+            logger.warning(
+                f"  → Amex report {filename} did not reconcile — falling back to vision"
+            )
+
         result = parse_statement_text(pdf_bytes, filename)
         checks = result["checks"]
         if checks["ok"] and result["transactions"]:

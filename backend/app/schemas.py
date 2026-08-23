@@ -69,6 +69,8 @@ class ParsedTransaction(BaseModel):
     statement_file: Optional[str] = None
     statement_period: Optional[str] = None
     account_label: Optional[str] = None
+    business_purpose: Optional[str] = None
+    purpose_source: Optional[str] = None
 
 
 class StatementImportRequest(BaseModel):

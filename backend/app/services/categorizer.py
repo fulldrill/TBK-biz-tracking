@@ -12,6 +12,12 @@ PRIORITY_RULES = [
     (re.compile(r'corp\s*pay\s*(cmci|cml)|litan[yr]*ryan\s+technologie', re.I), "Gross Revenue"),
     (re.compile(r'pennymac', re.I), "Mortgage"),
     (re.compile(r'\bmimi\b', re.I), "Child Care"),
+    # Paying the card settles a liability; the deductible spending is the
+    # individual charges on the card statement. Given its own line so it can be
+    # taken off the P&L once those charges are imported, without disturbing
+    # payments to cards whose statements are not loaded.
+    (re.compile(r'amex\s*epayment|ach\s*pmt\s+amex|american\s+express', re.I),
+     "Amex Card Payment"),
 ]
 
 CATEGORY_RULES = [
