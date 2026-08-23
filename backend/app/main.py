@@ -229,7 +229,8 @@ async def startup():
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "
             "source VARCHAR NOT NULL DEFAULT 'plaid'"
         ))
-        for _col in ("statement_file", "statement_period", "account_label"):
+        for _col in ("statement_file", "statement_period", "account_label",
+                     "business_purpose", "purpose_source"):
             await conn.execute(text(
                 f"ALTER TABLE transactions ADD COLUMN IF NOT EXISTS {_col} VARCHAR"
             ))

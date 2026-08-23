@@ -9,6 +9,8 @@ from app.services.plaid_service import fetch_transactions
 from app.services.zelle_parser import parse_zelle
 from app.services.categorizer import categorize_transaction
 from app.services.attribution import assign_user
+from app.config import settings
+from openai import AsyncOpenAI
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
@@ -164,6 +166,13 @@ async def update_transaction(
         raise HTTPException(status_code=404, detail="Transaction not found")
     if body.assigned_user is not None:
         tx.assigned_user = body.assigned_user if body.assigned_user != "" else None
+    if body.business_purpose is not None:
+        note = body.business_purpose.strip()
+        tx.business_purpose = note or None
+        # An owner-written note outranks anything generated, and clearing one
+        # puts the row back in the "needs your note" queue rather than leaving
+        # it silently blank.
+        tx.purpose_source = "manual" if note else "needs_input"
     await db.commit()
     await db.refresh(tx)
     return tx
@@ -318,3 +327,79 @@ async def legacy_delete_transaction(
     await db.delete(tx)
     await db.commit()
     return {"status": "deleted"}
+
+
+@router.post("/generate-purposes")
+async def generate_business_purposes(
+    org_id: str,
+    overwrite: bool = Query(False, description="Regenerate notes already generated"),
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Write a business-purpose note onto every transaction that lacks one.
+
+    Notes an owner wrote are never touched, even with overwrite=true — those
+    are an attestation, not something to regenerate.
+    """
+    from app.services.purpose_generator import (
+        build_context, derive_purpose, ai_purposes,
+        SOURCE_AI, SOURCE_NEEDS_INPUT, SOURCE_MANUAL,
+    )
+
+    all_rows = (await db.execute(
+        select(Transaction).where(Transaction.org_id == org_id).order_by(Transaction.date)
+    )).scalars().all()
+    if not all_rows:
+        return {"derived": 0, "ai": 0, "needs_input": 0, "skipped": 0}
+
+    ctx = build_context(all_rows)
+
+    targets = [
+        tx for tx in all_rows
+        if tx.purpose_source != SOURCE_MANUAL
+        and (overwrite or not tx.business_purpose)
+    ]
+    skipped = len(all_rows) - len(targets)
+
+    counts = {"derived": 0, "ai": 0, "needs_input": 0, "skipped": skipped}
+    unresolved: list = []
+
+    for tx in targets:
+        note, source = derive_purpose(tx, ctx)
+        if source and source != SOURCE_NEEDS_INPUT and note:
+            tx.business_purpose = note
+            tx.purpose_source = source
+            counts["derived"] += 1
+        elif source == SOURCE_NEEDS_INPUT:
+            tx.business_purpose = None
+            tx.purpose_source = SOURCE_NEEDS_INPUT
+            counts["needs_input"] += 1
+        else:
+            unresolved.append(tx)
+
+    # Anything no rule matched goes to the model, which restates the
+    # description or returns null when it reveals nothing.
+    if unresolved and settings.OPENAI_API_KEY:
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        for start in range(0, len(unresolved), 40):
+            chunk = unresolved[start:start + 40]
+            notes = await ai_purposes(client, [(t.name or "") for t in chunk])
+            for i, tx in enumerate(chunk):
+                note = notes.get(i)
+                if note:
+                    tx.business_purpose = note
+                    tx.purpose_source = SOURCE_AI
+                    counts["ai"] += 1
+                else:
+                    tx.business_purpose = None
+                    tx.purpose_source = SOURCE_NEEDS_INPUT
+                    counts["needs_input"] += 1
+    else:
+        for tx in unresolved:
+            tx.business_purpose = None
+            tx.purpose_source = SOURCE_NEEDS_INPUT
+            counts["needs_input"] += 1
+
+    await db.commit()
+    logger.info(f"Purpose generation for org {org_id}: {counts}")
+    return counts

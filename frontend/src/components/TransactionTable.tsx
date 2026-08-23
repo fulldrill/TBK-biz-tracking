@@ -57,6 +57,23 @@ export default function TransactionTable({
 }: Props) {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [patching, setPatching] = useState<string | null>(null);
+  const [editingPurpose, setEditingPurpose] = useState<string | null>(null);
+  const [purposeDraft, setPurposeDraft] = useState("");
+
+  const savePurpose = async (tx: Transaction) => {
+    setPatching(tx.id);
+    try {
+      const res = await transactionApi.patch(orgId, tx.id, {
+        business_purpose: purposeDraft,
+      });
+      onTransactionUpdated(res.data);
+      setEditingPurpose(null);
+    } catch {
+      alert("Could not save the note.");
+    } finally {
+      setPatching(null);
+    }
+  };
 
   const allSelected = transactions.length > 0 && transactions.every((t) => selectedIds.has(t.id));
 
@@ -132,7 +149,7 @@ export default function TransactionTable({
                 />
               </th>
             )}
-            {["Date", "Description", "Type", "Zelle", "Amount", "Category", "Assigned", "Receipt"].map((h) => (
+            {["Date", "Description", "Type", "Zelle", "Amount", "Category", "Assigned", "Purpose", "Receipt"].map((h) => (
               <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 {h}
               </th>
@@ -216,6 +233,63 @@ export default function TransactionTable({
                     </select>
                   ) : (
                     <UserBadge user={computedUser} />
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm max-w-sm align-top">
+                  {editingPurpose === tx.id ? (
+                    <div className="flex flex-col gap-1">
+                      <textarea
+                        value={purposeDraft}
+                        autoFocus
+                        rows={3}
+                        onChange={(e) => setPurposeDraft(e.target.value)}
+                        placeholder="What was this for, in business terms?"
+                        className="border rounded-lg px-2 py-1 text-xs w-64 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => savePurpose(tx)}
+                          disabled={patching === tx.id}
+                          className="text-xs bg-blue-600 text-white px-2 py-1 rounded disabled:opacity-50"
+                        >
+                          {patching === tx.id ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() => setEditingPurpose(null)}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : tx.business_purpose ? (
+                    <div
+                      onClick={() => {
+                        if (!isAdmin) return;
+                        setPurposeDraft(tx.business_purpose || "");
+                        setEditingPurpose(tx.id);
+                      }}
+                      title={isAdmin ? `${tx.business_purpose}\n\nClick to edit` : tx.business_purpose || ""}
+                      className={`text-xs text-gray-600 line-clamp-3 ${isAdmin ? "cursor-pointer hover:text-gray-900" : ""}`}
+                    >
+                      {tx.business_purpose}
+                    </div>
+                  ) : isAdmin ? (
+                    <button
+                      onClick={() => {
+                        setPurposeDraft("");
+                        setEditingPurpose(tx.id);
+                      }}
+                      className={`text-xs ${
+                        tx.purpose_source === "needs_input"
+                          ? "text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded"
+                          : "text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      {tx.purpose_source === "needs_input" ? "needs your note" : "+ add note"}
+                    </button>
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3">

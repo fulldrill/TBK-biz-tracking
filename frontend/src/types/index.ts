@@ -13,6 +13,9 @@ export interface Transaction {
   assigned_user: string | null;
   source: "plaid" | "statement_import";
   repayment_loan_id?: string | null;
+  business_purpose?: string | null;
+  /** derived | ai | manual | needs_input */
+  purpose_source?: string | null;
 }
 
 // --- Loan types ---

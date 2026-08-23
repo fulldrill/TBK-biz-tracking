@@ -46,6 +46,8 @@ class TransactionOut(BaseModel):
     assigned_user: Optional[str] = None
     source: str = "plaid"
     repayment_loan_id: Optional[UUID] = None
+    business_purpose: Optional[str] = None
+    purpose_source: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -76,6 +78,7 @@ class StatementImportRequest(BaseModel):
 
 class TransactionUpdate(BaseModel):
     assigned_user: Optional[str] = None  # "Kenny" | "Bright" | "Tony" | None
+    business_purpose: Optional[str] = None
 
 
 class BulkDeleteRequest(BaseModel):

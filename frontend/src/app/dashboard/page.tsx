@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
   const [people, setPeople] = useState<string[]>([]);
   const [downloadingReceipts, setDownloadingReceipts] = useState(false);
+  const [generatingNotes, setGeneratingNotes] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [filters, setFilters] = useState({
@@ -146,6 +147,26 @@ export default function Dashboard() {
     }
   };
 
+  const handleGenerateNotes = async () => {
+    if (!orgId) return;
+    setGeneratingNotes(true);
+    setSyncMessage("Writing business-purpose notes...");
+    try {
+      const res = await transactionApi.generatePurposes(orgId);
+      const { derived = 0, ai = 0, needs_input = 0, skipped = 0 } = res.data || {};
+      setSyncMessage(
+        `Notes written: ${derived} derived from the ledger, ${ai} from the description. ` +
+          `${needs_input} need your own note — the records do not say what they were for. ` +
+          `${skipped} left alone (already written by you).`
+      );
+      await loadData();
+    } catch {
+      setSyncMessage("Could not generate notes. Please try again.");
+    } finally {
+      setGeneratingNotes(false);
+    }
+  };
+
   const handleTransactionUpdated = (updated: Transaction) => {
     setTransactions((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   };
@@ -239,6 +260,16 @@ export default function Dashboard() {
             >
               Export PDF
             </button>
+            {isAdmin && (
+              <button
+                onClick={handleGenerateNotes}
+                disabled={generatingNotes}
+                title="Write a business-purpose note on every transaction that lacks one"
+                className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 text-sm font-medium disabled:opacity-50 transition"
+              >
+                {generatingNotes ? "Writing..." : "Generate Notes"}
+              </button>
+            )}
             <button
               onClick={handleDownloadAllReceipts}
               disabled={downloadingReceipts}

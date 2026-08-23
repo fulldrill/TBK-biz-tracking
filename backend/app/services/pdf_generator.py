@@ -57,6 +57,15 @@ def _receipt_flowables(transaction_data: dict, org_name: str, styles) -> list:
     if transaction_data.get("reference"):
         data.append(["Reference", str(transaction_data["reference"])])
 
+    # Why this was a business cost. Wrapped in a Paragraph because a raw string
+    # in a table cell does not wrap and would run off the page.
+    purpose = (transaction_data.get("business_purpose") or "").strip()
+    if purpose:
+        cell_style = ParagraphStyle(
+            "PurposeCell", parent=styles["Normal"], fontSize=9.5, leading=12,
+        )
+        data.append(["Context / Purpose", Paragraph(purpose, cell_style)])
+
     table = Table(data, colWidths=[2.2 * inch, 4.8 * inch])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),

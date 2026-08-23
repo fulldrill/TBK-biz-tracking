@@ -113,6 +113,10 @@ class Transaction(Base):
     statement_file = Column(String, nullable=True)      # source PDF filename
     statement_period = Column(String, nullable=True)    # statement closing date, ISO
     account_label = Column(String, nullable=True)       # "TRUIST ... CHECKING ••••7218"
+    # Why this transaction was a business cost. Empty with purpose_source
+    # "needs_input" means the ledger cannot establish it and the owner must say.
+    business_purpose = Column(Text, nullable=True)
+    purpose_source = Column(String, nullable=True)      # derived | ai | manual | needs_input
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="transactions")
     org = relationship("Organization", back_populates="transactions")

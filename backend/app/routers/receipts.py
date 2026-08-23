@@ -36,6 +36,7 @@ def _receipt_data(tx, org_name: str = "") -> dict:
         "statement_period": tx.statement_period,
         "statement_file": tx.statement_file,
         "reference": tx.plaid_transaction_id,
+        "business_purpose": tx.business_purpose,
     }
 
 
