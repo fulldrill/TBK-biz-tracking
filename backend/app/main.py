@@ -158,11 +158,20 @@ async def recategorize_priority_rules() -> None:
     """
     from app.models import Transaction as TxModel
     from app.services.categorizer import PRIORITY_RULES
+    from app.services.owner_transfers import CATEGORY_DRAW, CATEGORY_CONTRIBUTION
+
+    # A description rule must never override an owner classification. Paying
+    # Mimi matches the childcare rule, but once she is a personal payee those
+    # rows are draws — and this task runs on every boot, so without the guard
+    # it would quietly undo that each restart.
+    protected = {CATEGORY_DRAW, CATEGORY_CONTRIBUTION}
 
     async with AsyncSessionLocal() as db:
         txns = (await db.execute(select(TxModel))).scalars().all()
         updated = 0
         for tx in txns:
+            if tx.category in protected:
+                continue
             text = f"{tx.name or ''} {tx.description or ''} {tx.zelle_counterparty or ''}"
             for pattern, category in PRIORITY_RULES:
                 if pattern.search(text):
