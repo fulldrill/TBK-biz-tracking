@@ -257,3 +257,39 @@ def test_enrich_without_account_leaves_label_empty():
              "transaction_type": "debit"}]
     out = enrich(rows, "x.pdf")
     assert out[0]["account_label"] is None
+
+
+# --- owner transfers must survive a re-import ---
+
+class _Person:
+    def __init__(self, name, aliases=None):
+        self.name = name
+        self.aliases = aliases
+
+
+def test_import_classifies_owner_transfers():
+    # Otherwise every re-import quietly turns owner draws back into expenses.
+    rows = [
+        {"date": "2025-08-15", "name": "ZELLE BUSINESS PAYMENT TO Bright Litandaze PAYMENT ID X",
+         "amount": 823.0, "transaction_type": "debit"},
+        {"date": "2025-08-15", "name": "ZELLE BUSINESS PAYMENT FROM BRIGHT AMIBANG PAYMENT ID Y",
+         "amount": 2000.0, "transaction_type": "credit"},
+    ]
+    out = enrich(rows, "aug.pdf", allowed_people=[_Person("Bright")])
+    assert out[0]["category"] == "Owner's Draw"
+    assert "not a business expense" in out[0]["business_purpose"]
+    assert out[1]["category"] == "Owner's Contribution"
+
+
+def test_import_leaves_third_party_zelle_as_an_expense():
+    rows = [{"date": "2025-08-15", "name": "ZELLE BUSINESS PAYMENT TO Bee Amibang PAYMENT ID X",
+             "amount": 580.0, "transaction_type": "debit"}]
+    out = enrich(rows, "aug.pdf", allowed_people=[_Person("Bright")])
+    assert out[0]["category"] == "Zelle"
+
+
+def test_import_uses_aliases_for_owner_matching():
+    rows = [{"date": "2025-08-15", "name": "ZELLE PAYMENT TO Kenneth Manjo PAYMENT ID X",
+             "amount": 500.0, "transaction_type": "debit"}]
+    out = enrich(rows, "aug.pdf", allowed_people=[_Person("Kenny", "Kenneth Manjo")])
+    assert out[0]["category"] == "Owner's Draw"

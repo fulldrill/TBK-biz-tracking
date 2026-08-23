@@ -109,10 +109,11 @@ async def parse_statement(
 
     # Attribution must stay inside this org's own people — a rule that fires
     # for Kenny must not tag rows in an org he has no part in.
+    # Full rows, not just names: owner matching needs the aliases too.
     people = (await db.execute(
-        select(OrgPerson.name).where(OrgPerson.org_id == uuid.UUID(org_id))
+        select(OrgPerson).where(OrgPerson.org_id == uuid.UUID(org_id))
     )).scalars().all()
-    allowed = sorted(people) or None
+    allowed = list(people) or None
 
     if is_zip:
         transactions = await parse_zip_bytes(

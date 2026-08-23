@@ -287,6 +287,19 @@ def enrich(
     from app.services.attribution import assign_user
     from app.services.categorizer import categorize_transaction
     from app.services.zelle_parser import is_zelle_transaction
+    from app.services.owner_transfers import (
+        owner_tokens, classify_owner_transfer, purpose_note,
+    )
+
+    # Transfers to and from the org's own people are equity movement, not
+    # expense. Classifying at import time keeps a re-import from silently
+    # undoing it — the previous version only applied this as a one-off pass.
+    owners = owner_tokens(allowed_people or [])
+    names = [
+        p if isinstance(p, str) else getattr(p, "name", "")
+        for p in (allowed_people or [])
+    ]
+    names = [n for n in names if n]
 
     for tx in transactions:
         name = tx.get("name", "")
@@ -304,8 +317,17 @@ def enrich(
         )
         tx["assigned_user"] = assign_user(
             name, tx["transaction_type"], is_zelle,
-            tx["zelle_counterparty"], allowed=allowed_people,
+            tx["zelle_counterparty"], allowed=names or None,
         )
+
+        owner_category, owner = classify_owner_transfer(
+            is_zelle, tx["zelle_counterparty"], tx["zelle_direction"],
+            tx["transaction_type"], owners,
+        )
+        if owner_category:
+            tx["category"] = owner_category
+            tx["business_purpose"] = purpose_note(owner_category, owner)
+            tx["purpose_source"] = "derived"
         tx["source"] = "statement_import"
         tx["statement_file"] = filename
         tx["statement_period"] = period_end
