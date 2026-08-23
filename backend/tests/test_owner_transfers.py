@@ -164,11 +164,12 @@ def test_paying_a_personal_payee_is_a_draw():
     assert who == "Mimi S"
 
 
-def test_money_in_from_a_personal_payee_is_not_a_capital_contribution():
-    # Only a principal contributes capital. A refund from a childcare provider
-    # is income until shown otherwise, so it is left alone.
+def test_money_back_from_a_personal_payee_is_not_income():
+    # The business never earned it — it is the return of a draw, so it belongs
+    # outside the statement rather than in revenue.
     cat, who = classify_owner_transfer(True, "Mimi S", "received", "credit", PERSONAL)
-    assert cat is None and who is None
+    assert cat == CATEGORY_CONTRIBUTION
+    assert who == "Mimi S"
 
 
 def test_owners_still_contribute_capital():

@@ -456,3 +456,30 @@ def test_recurring_negative_entry_applies_every_month():
     adj = _Entry("Monthly Credit", -100.0, "expense", "monthly", datetime(2025, 1, 1))
     pnl = build_pnl([], datetime(2025, 1, 1), datetime(2025, 12, 31), manual_entries=[adj])
     assert pnl["total_expenses"] == -1200.0
+
+
+# --- revenue is only what the business earned ---
+
+def test_a_reversed_payment_touches_neither_side():
+    # The outgoing leg and its reversal must both sit outside the statement,
+    # or expenses and revenue are each inflated by the same amount.
+    txs = [
+        _Tx(datetime(2025, 4, 15), 1600.0, "Reversal", "debit"),
+        _Tx(datetime(2025, 4, 22), 1600.0, "Reversal", "credit"),
+    ]
+    pnl = build_pnl(txs, datetime(2025, 4, 1), datetime(2025, 4, 30))
+    assert pnl["total_revenue"] == 0.0
+    assert pnl["total_expenses"] == 0.0
+    assert pnl["total_excluded"] == 3200.0
+
+
+def test_refund_nets_off_the_expense_side():
+    txs = [
+        _Tx(datetime(2025, 3, 5), 500.0, "Office Supplies", "debit"),
+        _Tx(datetime(2025, 3, 9), 120.0, "Refund", "credit"),
+    ]
+    pnl = build_pnl(txs, datetime(2025, 3, 1), datetime(2025, 3, 31))
+    assert pnl["total_revenue"] == 0.0
+    assert pnl["total_expenses"] == 380.0
+    line = [l for l in pnl["expense_lines"] if l["label"] == "Refunds & Credits"][0]
+    assert line["amount"] == -120.0

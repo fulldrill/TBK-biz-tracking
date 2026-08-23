@@ -18,6 +18,9 @@ PRIORITY_RULES = [
     # payments to cards whose statements are not loaded.
     (re.compile(r'amex\s*epayment|ach\s*pmt\s+amex|american\s+express', re.I),
      "Amex Card Payment"),
+    # A reversed payment never happened. Left alone, the outgoing leg inflates
+    # expenses and the returning leg inflates revenue, by the same amount.
+    (re.compile(r'reversal|returned\s+item|reversed', re.I), "Reversal"),
 ]
 
 CATEGORY_RULES = [

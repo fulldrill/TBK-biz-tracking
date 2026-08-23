@@ -44,7 +44,15 @@ from typing import Iterable, List, Optional
 EXCLUDED_CATEGORIES = {
     "Loan Payments", "Transfer", "Mortgage",
     "Owner's Draw", "Owner's Contribution",
+    # A reversed payment never happened; both legs sit outside the statement.
+    "Reversal",
 }
+
+# Money coming back on a purchase reduces the cost — it is not income. These
+# land in expenses as a negative rather than in revenue, so the expense total
+# is net of them and revenue reflects only what the business actually earned.
+CONTRA_EXPENSE_CATEGORIES = {"Refund"}
+CONTRA_EXPENSE_LINE = "Refunds & Credits"
 
 # Categories to book in the month earned rather than the month received.
 #
@@ -63,7 +71,6 @@ REVENUE_LINE_MAP = {
     "Zelle": "Zelle Received",
     "Deposit": "Deposits",
     "Payment": "Customer Payments",
-    "Refund": "Refunds & Credits",
 }
 DEFAULT_REVENUE_LINE = "Other Income"
 
@@ -130,6 +137,7 @@ EXPENSE_LINE_ORDER = [
     "Cash Withdrawals",
     "Other Expenses",
     "Uncategorized Expense",
+    "Refunds & Credits",
 ]
 
 
@@ -301,8 +309,13 @@ def build_pnl(
         if eff != tx.date:
             deferred_count += 1
 
-        section, label = classify(tx.category, tx_type)
-        _add(sections[section], label, abs(tx.amount or 0.0), key)
+        cat = (tx.category or "").strip()
+        amount = abs(tx.amount or 0.0)
+        if cat in CONTRA_EXPENSE_CATEGORIES and tx_type == "credit":
+            section, label, amount = "expense", CONTRA_EXPENSE_LINE, -amount
+        else:
+            section, label = classify(cat, tx_type)
+        _add(sections[section], label, amount, key)
         counted += 1
 
     manual_rows = expand_manual_entries(manual_entries or [], months)

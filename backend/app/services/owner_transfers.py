@@ -106,11 +106,9 @@ def classify_owner_transfer(
     if not owner:
         return (None, None)
     if transaction_type == "credit":
-        # Only a principal can contribute capital. Money arriving from someone
-        # the owner merely pays is income until shown otherwise, so it is left
-        # alone rather than being written off as equity.
-        if kind_of(owners, owner) == "personal":
-            return (None, None)
+        # Money coming back from a personal payee is the return of a draw, not
+        # a sale — the business never earned it. Same section as a principal's
+        # capital contribution.
         return (CATEGORY_CONTRIBUTION, owner)
     return (CATEGORY_DRAW, owner)
 

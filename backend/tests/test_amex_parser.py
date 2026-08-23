@@ -91,12 +91,33 @@ def test_enrich_sets_category_purpose_and_provenance():
     assert out[0]["source"] == "statement_import"
 
 
-def test_refund_does_not_become_revenue_in_its_spending_category():
+def test_refund_reduces_expenses_rather_than_adding_revenue():
+    from datetime import datetime
+    from app.services.pnl import build_pnl
+
     out = enrich_amex(_rows(), "x.pdf", {}, "2025-12-31")
     refund = out[2]
     assert refund["category"] == "Refund"
     assert refund["amount"] == 40.00          # magnitude; direction is on the type
-    assert classify("Refund", "credit")[1] == "Refunds & Credits"
+
+    class _Type:
+        def __init__(self, v): self.value = v
+
+    class _Tx:
+        def __init__(self, amount, category, ttype):
+            self.date = datetime(2025, 3, 5)
+            self.amount = amount
+            self.category = category
+            self.transaction_type = _Type(ttype)
+
+    pnl = build_pnl(
+        [_Tx(100.0, "Office Supplies", "debit"), _Tx(40.0, "Refund", "credit")],
+        datetime(2025, 3, 1), datetime(2025, 3, 31),
+    )
+    # Money back on a purchase is not income.
+    assert pnl["total_revenue"] == 0.0
+    assert pnl["total_expenses"] == 60.0
+    assert pnl["net_profit"] == -60.0
 
 
 def test_enrich_clears_zelle_fields():
