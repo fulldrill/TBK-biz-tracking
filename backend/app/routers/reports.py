@@ -3,17 +3,23 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from app.database import get_db
-from app.models import Transaction, Organization, OrgRole
+from app.models import Transaction, Organization, OrgRole, PnlEntry
+from app.schemas import PnlEntryCreate, PnlEntryUpdate, PnlEntryOut
 from app.auth import require_org_role
 from app.services.pnl import build_pnl
 from app.services.pdf_generator import generate_pnl_pdf
 from app.config import settings
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 import os
 import uuid
 
 router = APIRouter(prefix="/orgs/{org_id}/reports", tags=["Reports"])
+
+# Deferred revenue lands the month after it is earned, so a deposit dated just
+# past period_end still belongs inside the period. Query wider than the window
+# and let build_pnl filter on effective date.
+_LOOKAHEAD = timedelta(days=45)
 
 
 def _resolve_period(
@@ -37,9 +43,19 @@ async def _load(db: AsyncSession, org_id: str, start: datetime, end: datetime):
         .where(and_(
             Transaction.org_id == org_id,
             Transaction.date >= start,
-            Transaction.date <= end,
+            Transaction.date <= end + _LOOKAHEAD,
         ))
         .order_by(Transaction.date)
+    )
+    return result.scalars().all()
+
+
+async def _load_manual(db: AsyncSession, org_id: str):
+    result = await db.execute(
+        select(PnlEntry).where(and_(
+            PnlEntry.org_id == org_id,
+            PnlEntry.is_active.is_(True),
+        ))
     )
     return result.scalars().all()
 
@@ -71,7 +87,8 @@ async def get_pnl(
 ):
     start, end = _resolve_period(year, start_date, end_date)
     transactions = await _load(db, org_id, start, end)
-    return build_pnl(transactions, start, end)
+    manual = await _load_manual(db, org_id)
+    return build_pnl(transactions, start, end, manual_entries=manual)
 
 
 @router.get("/pnl/pdf")
@@ -85,10 +102,11 @@ async def get_pnl_pdf(
 ):
     start, end = _resolve_period(year, start_date, end_date)
     transactions = await _load(db, org_id, start, end)
-    if not transactions:
-        raise HTTPException(status_code=404, detail="No transactions found for that period")
+    manual = await _load_manual(db, org_id)
+    pnl = build_pnl(transactions, start, end, manual_entries=manual)
 
-    pnl = build_pnl(transactions, start, end)
+    if not pnl["transaction_count"] and not pnl["manual_entry_count"]:
+        raise HTTPException(status_code=404, detail="No transactions found for that period")
 
     org = (await db.execute(
         select(Organization).where(Organization.id == org_id)
@@ -105,3 +123,101 @@ async def get_pnl_pdf(
         media_type="application/pdf",
         filename=f"profit-and-loss_{label}.pdf",
     )
+
+
+# ---------------------------------------------------------------------------
+# Manual P&L entries — costs and income that never touched the bank account
+# ---------------------------------------------------------------------------
+
+def _validate(entry_type: str, recurrence: str) -> None:
+    if entry_type not in ("revenue", "expense"):
+        raise HTTPException(status_code=422, detail="entry_type must be 'revenue' or 'expense'")
+    if recurrence not in ("monthly", "once"):
+        raise HTTPException(status_code=422, detail="recurrence must be 'monthly' or 'once'")
+
+
+@router.get("/entries", response_model=List[PnlEntryOut])
+async def list_entries(
+    org_id: str,
+    auth=Depends(require_org_role(OrgRole.VIEWER)),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PnlEntry).where(PnlEntry.org_id == org_id).order_by(PnlEntry.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/entries", response_model=PnlEntryOut, status_code=201)
+async def create_entry(
+    org_id: str,
+    body: PnlEntryCreate,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    _validate(body.entry_type, body.recurrence)
+    if body.end_date and body.end_date < body.start_date:
+        raise HTTPException(status_code=422, detail="end_date cannot be before start_date")
+
+    entry = PnlEntry(
+        org_id=uuid.UUID(org_id),
+        label=body.label.strip(),
+        amount=abs(body.amount),
+        entry_type=body.entry_type,
+        recurrence=body.recurrence,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        notes=body.notes,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+@router.patch("/entries/{entry_id}", response_model=PnlEntryOut)
+async def update_entry(
+    org_id: str,
+    entry_id: str,
+    body: PnlEntryUpdate,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    entry = (await db.execute(
+        select(PnlEntry).where(and_(PnlEntry.id == entry_id, PnlEntry.org_id == org_id))
+    )).scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    data = body.model_dump(exclude_unset=True)
+    _validate(
+        data.get("entry_type", entry.entry_type),
+        data.get("recurrence", entry.recurrence),
+    )
+    if "amount" in data:
+        data["amount"] = abs(data["amount"])
+    for field, value in data.items():
+        setattr(entry, field, value)
+
+    if entry.end_date and entry.end_date < entry.start_date:
+        raise HTTPException(status_code=422, detail="end_date cannot be before start_date")
+
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+@router.delete("/entries/{entry_id}", status_code=204)
+async def delete_entry(
+    org_id: str,
+    entry_id: str,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    entry = (await db.execute(
+        select(PnlEntry).where(and_(PnlEntry.id == entry_id, PnlEntry.org_id == org_id))
+    )).scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    await db.delete(entry)
+    await db.commit()

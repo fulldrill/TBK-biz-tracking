@@ -164,10 +164,14 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
     elements.append(Paragraph(org_name or "Clerq", title_style))
     elements.append(Paragraph("Profit &amp; Loss Statement", styles["Heading2"]))
     elements.append(Paragraph(period_label, styles["Normal"]))
-    elements.append(Paragraph(
-        "<i>Cash basis — recognized when funds moved, not when invoiced.</i>",
-        styles["Normal"],
-    ))
+    if pnl.get("basis") == "accrual-adjusted":
+        basis_note = (
+            "<i>Cash basis, adjusted for revenue paid in arrears — the payroll deposit "
+            "that arrives on the 15th is booked to the month it was earned.</i>"
+        )
+    else:
+        basis_note = "<i>Cash basis — recognized when funds moved, not when invoiced.</i>"
+    elements.append(Paragraph(basis_note, styles["Normal"]))
     elements.append(HRFlowable(width="100%", thickness=1, color=NAVY))
     elements.append(Spacer(1, 0.25 * inch))
 
@@ -202,7 +206,8 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
 
     section_header("REVENUE")
     for line in pnl["revenue_lines"]:
-        rows.append([f"    {line['label']}", _money(line["amount"])])
+        mark = " *" if line.get("manual") else ""
+        rows.append([f"    {line['label']}{mark}", _money(line["amount"])])
     if not pnl["revenue_lines"]:
         rows.append(["    No revenue recorded in this period", _money(0)])
     total_row("Total Revenue", pnl["total_revenue"])
@@ -210,7 +215,8 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
     rows.append(["", ""])
     section_header("OPERATING EXPENSES")
     for line in pnl["expense_lines"]:
-        rows.append([f"    {line['label']}", _money(line["amount"])])
+        mark = " *" if line.get("manual") else ""
+        rows.append([f"    {line['label']}{mark}", _money(line["amount"])])
     if not pnl["expense_lines"]:
         rows.append(["    No expenses recorded in this period", _money(0)])
     total_row("Total Operating Expenses", pnl["total_expenses"])
@@ -233,10 +239,24 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
     elements.append(Spacer(1, 0.2 * inch))
 
     margin_note = f"Net margin: {pnl['margin_pct']}%" if pnl["total_revenue"] else "Net margin: n/a (no revenue)"
-    elements.append(Paragraph(
-        f"{margin_note} &nbsp;·&nbsp; {pnl['transaction_count']} transactions in period",
-        styles["Normal"],
-    ))
+    footer_bits = [margin_note, f"{pnl['transaction_count']} transactions in period"]
+    if pnl.get("manual_entry_count"):
+        footer_bits.append(f"{pnl['manual_entry_count']} manual entries (*)")
+    elements.append(Paragraph(" &nbsp;·&nbsp; ".join(footer_bits), styles["Normal"]))
+
+    # Months with no bank activity almost always mean a statement was never
+    # uploaded or failed to parse. Saying so beats presenting a false zero.
+    empty = pnl.get("empty_months") or []
+    if empty:
+        multi_year_gap = len({m[:4] for m in empty}) > 1
+        listed = ", ".join(_month_label(m, multi_year_gap) for m in empty)
+        elements.append(Spacer(1, 0.12 * inch))
+        elements.append(Paragraph(
+            f'<font color="#a11616"><b>Incomplete data:</b> no transactions at all in '
+            f'{listed}. These months are almost certainly missing statements rather than '
+            f'months with no activity — the totals above understate the period.</font>',
+            styles["Normal"],
+        ))
 
     # --- Excluded items ---
     if pnl["excluded_lines"]:
@@ -262,9 +282,11 @@ def generate_pnl_pdf(pnl: dict, output_path: str, org_name: str = "") -> str:
         elements.append(Paragraph(
             "<i>These are balance-sheet movements, not income or expense, so they sit outside "
             "the statement. Transfers are money between the owners' own accounts — booking a "
-            "partner topping up the account as revenue would overstate income. Loan payments "
-            "are principal; the interest portion is a genuine expense, but bank transaction "
-            "data cannot separate it — ask your accountant to book that adjustment.</i>",
+            "partner topping up the account as revenue would overstate income. The mortgage is "
+            "an owner draw; the home-office cost appears instead as a manual rent line, and "
+            "counting both would double-dip. Loan payments are principal; the interest portion "
+            "is a genuine expense, but bank transaction data cannot separate it — ask your "
+            "accountant to book that adjustment.</i>",
             styles["Normal"],
         ))
 

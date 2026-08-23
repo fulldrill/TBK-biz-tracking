@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { transactionApi, totalsApi, receiptApi, checkHealth } from "@/lib/api";
+import { transactionApi, totalsApi, receiptApi, orgApi, checkHealth } from "@/lib/api";
 import { exportToCSV } from "@/lib/attribution";
 import { Transaction, Totals } from "@/types";
 import TransactionTable from "@/components/TransactionTable";
@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
+  const [people, setPeople] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [filters, setFilters] = useState({
@@ -72,7 +73,13 @@ export default function Dashboard() {
     }
     loadData();
     checkHealth().then(setApiHealthy);
-  }, [loadData, router, activeOrg, orgLoading]);
+    if (orgId) {
+      orgApi
+        .getPeople(orgId)
+        .then((res) => setPeople(res.data.map((p: { name: string }) => p.name)))
+        .catch(() => setPeople([]));
+    }
+  }, [loadData, router, activeOrg, orgLoading, orgId]);
 
   const handleSync = async () => {
     if (!orgId) return;
@@ -354,6 +361,7 @@ export default function Dashboard() {
             orgId={orgId!}
             transactions={transactions}
             isAdmin={isAdmin}
+            people={people}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             onTransactionUpdated={handleTransactionUpdated}

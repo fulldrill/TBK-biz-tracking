@@ -148,6 +148,66 @@ async def backfill_assigned_users() -> None:
             logger.info(f"Backfilled assigned_user for {updated} transactions")
 
 
+async def recategorize_priority_rules() -> None:
+    """Idempotent: re-apply PRIORITY_RULES to transactions already in the DB.
+
+    The bank's own label is too coarse for these — it calls the CMCI payroll
+    deposit "Deposit" and the mortgage "Payment". Rows imported before those
+    rules existed still carry the coarse category, so the P&L would misfile
+    them. Only rows a priority rule actually matches are touched.
+    """
+    from app.models import Transaction as TxModel
+    from app.services.categorizer import PRIORITY_RULES
+
+    async with AsyncSessionLocal() as db:
+        txns = (await db.execute(select(TxModel))).scalars().all()
+        updated = 0
+        for tx in txns:
+            text = f"{tx.name or ''} {tx.description or ''} {tx.zelle_counterparty or ''}"
+            for pattern, category in PRIORITY_RULES:
+                if pattern.search(text):
+                    if tx.category != category:
+                        tx.category = category
+                        updated += 1
+                    break
+        if updated:
+            await db.commit()
+            logger.info(f"Recategorized {updated} transaction(s) via priority rules")
+
+
+async def seed_org_people() -> None:
+    """Idempotent: give every org a people list derived from its own data.
+
+    Seeds from the distinct assigned_user values already on that org's
+    transactions, so each org starts with exactly the names it actually uses
+    rather than the old global Kenny/Bright/Tony list. Only runs for orgs that
+    have no people yet, so edits made in settings are never overwritten.
+    """
+    from app.models import Transaction as TxModel, OrgPerson
+
+    async with AsyncSessionLocal() as db:
+        orgs = (await db.execute(select(Organization))).scalars().all()
+        added = 0
+        for org in orgs:
+            existing = (await db.execute(
+                select(OrgPerson).where(OrgPerson.org_id == org.id)
+            )).scalars().all()
+            if existing:
+                continue
+
+            names = (await db.execute(
+                select(TxModel.assigned_user)
+                .where(TxModel.org_id == org.id, TxModel.assigned_user.isnot(None))
+                .distinct()
+            )).scalars().all()
+            for name in sorted({n.strip() for n in names if n and n.strip()}):
+                db.add(OrgPerson(org_id=org.id, name=name))
+                added += 1
+        if added:
+            await db.commit()
+            logger.info(f"Seeded {added} org people row(s)")
+
+
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
@@ -173,6 +233,8 @@ async def startup():
     os.makedirs("./receipts", exist_ok=True)
     await run_org_migration()
     await backfill_assigned_users()
+    await seed_org_people()
+    await recategorize_priority_rules()
 
 
 @app.post("/auth/register", tags=["Auth"])

@@ -9,20 +9,32 @@ import { useOrg } from "@/context/OrgContext";
 const fmt = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
+// Colour is derived from the name so any org's people render consistently,
+// without this component needing to know who they are.
+const BADGE_COLORS = [
+  "bg-blue-100 text-blue-700",
+  "bg-amber-100 text-amber-700",
+  "bg-teal-100 text-teal-700",
+  "bg-violet-100 text-violet-700",
+  "bg-rose-100 text-rose-700",
+  "bg-lime-100 text-lime-700",
+];
+
+function badgeColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  return BADGE_COLORS[Math.abs(hash) % BADGE_COLORS.length];
+}
+
 function UserBadge({ user }: { user: string | null }) {
-  if (user === "Kenny")
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-        Kenny
-      </span>
-    );
-  if (user === "Bright")
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-        Bright
-      </span>
-    );
-  return <span className="text-gray-300 text-xs">—</span>;
+  if (!user) return <span className="text-gray-300 text-xs">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor(user)}`}
+    >
+      {user}
+    </span>
+  );
 }
 
 export default function StatementsPage() {
@@ -238,6 +250,73 @@ export default function StatementsPage() {
         {/* Preview table */}
         {parseResult && !importResult && (
           <div className="space-y-4">
+            {/* Per-file result. A file that yielded nothing used to look
+                identical to a quiet month — now it is called out. */}
+            {(parseResult.file_reports?.length ?? 0) > 0 && (
+              <div className="border rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-100 text-xs text-gray-500 uppercase">
+                      <th className="text-left px-4 py-2">File</th>
+                      <th className="text-left px-4 py-2">Read via</th>
+                      <th className="text-left px-4 py-2">Covers</th>
+                      <th className="text-right px-4 py-2">Rows</th>
+                      <th className="text-left px-4 py-2">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parseResult.file_reports.map((r) => {
+                      const bad = r.transactions === 0 || r.failed_pages.length > 0;
+                      return (
+                        <tr key={r.file} className="border-t">
+                          <td className="px-4 py-2 text-gray-800">{r.file}</td>
+                          <td className="px-4 py-2 text-xs text-gray-500">
+                            {r.method === "text" ? "text layer" : "image OCR"}
+                          </td>
+                          <td className="px-4 py-2 text-xs text-gray-500">
+                            {r.months.length ? r.months.join(", ") : "—"}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {r.transactions}
+                          </td>
+                          <td className="px-4 py-2 text-xs">
+                            {bad ? (
+                              <span className="text-red-600 font-medium">
+                                {r.transactions === 0
+                                  ? "nothing extracted"
+                                  : `${r.failed_pages.length} page(s) failed`}
+                              </span>
+                            ) : r.reconciled ? (
+                              <span className="text-emerald-700 font-medium">
+                                matches statement totals
+                              </span>
+                            ) : (
+                              <span className="text-amber-600">
+                                not verified against totals
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(parseResult.problem_files?.length ?? 0) > 0 && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+                <p className="font-semibold">
+                  {parseResult.problem_files.length} file
+                  {parseResult.problem_files.length === 1 ? "" : "s"} did not parse cleanly
+                </p>
+                <p className="mt-1">
+                  Importing now would silently leave those transactions out. Check the
+                  files above before continuing.
+                </p>
+              </div>
+            )}
+
             {/* Summary + action bar */}
             <div className="flex items-center justify-between">
               <div>
@@ -291,16 +370,22 @@ export default function StatementsPage() {
                   count: parseResult.transactions.filter((t) => t.is_zelle).length,
                   cls: "bg-purple-100 text-purple-700",
                 },
-                {
-                  label: "Kenny",
-                  count: parseResult.transactions.filter((t) => t.assigned_user === "Kenny").length,
-                  cls: "bg-blue-100 text-blue-700",
-                },
-                {
-                  label: "Bright",
-                  count: parseResult.transactions.filter((t) => t.assigned_user === "Bright").length,
-                  cls: "bg-amber-100 text-amber-700",
-                },
+                // Whoever this org actually attributes to, rather than a fixed
+                // Kenny/Bright pair that other orgs have no part in.
+                ...Array.from(
+                  new Set(
+                    parseResult.transactions
+                      .map((t) => t.assigned_user)
+                      .filter((u): u is string => Boolean(u))
+                  )
+                )
+                  .sort()
+                  .map((name) => ({
+                    label: name,
+                    count: parseResult.transactions.filter((t) => t.assigned_user === name)
+                      .length,
+                    cls: "bg-blue-100 text-blue-700",
+                  })),
               ].map(({ label, count, cls }) => (
                 <span key={label} className={`px-3 py-1 rounded-full text-xs font-medium ${cls}`}>
                   {label}: {count}

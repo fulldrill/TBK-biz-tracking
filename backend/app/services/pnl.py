@@ -1,15 +1,18 @@
 """Profit & Loss statement builder.
 
-Turns raw transactions into a cash-basis income statement. Bank data records
-money when it *moves*, so everything here is cash-basis, never accrual.
+Bank data records money when it *moves*, so this is cash-basis by default —
+with one deliberate exception. The CMCI payroll deposit lands on the 15th of
+the month *after* the work was done, so it is recognised in the month earned
+(see DEFERRED_REVENUE_CATEGORIES). That makes monthly margins meaningful
+instead of parking a month's whole revenue in the wrong column, and the
+statement labels itself accordingly.
 
-Classification is rule-based and lives entirely in this module — no schema
-change, no per-org config table. Credits become revenue, debits become
-operating expenses, and a small set of categories is excluded outright
-because they are balance-sheet movements rather than income or expense.
+Classification is rule-based and lives in this module — no per-org config
+table. Credits become revenue, debits become operating expenses, and a small
+set of categories is excluded because they are balance-sheet movements rather
+than income or expense.
 """
 
-from collections import OrderedDict
 from datetime import datetime
 from typing import Iterable, List, Optional
 
@@ -28,12 +31,21 @@ from typing import Iterable, List, Optional
 # topping up the account as revenue would overstate income — it is a capital
 # contribution, not a sale.
 #
-# Both are surfaced in their own section so the number stays visible rather
+# "Mortgage": a personal mortgage paid from the business account is an owner
+# draw. The home-office cost belongs on the P&L as a manual rent entry
+# instead; counting both would double-dip.
+#
+# All are surfaced in their own section so the number stays visible rather
 # than silently dropped.
-EXCLUDED_CATEGORIES = {"Loan Payments", "Transfer"}
+EXCLUDED_CATEGORIES = {"Loan Payments", "Transfer", "Mortgage"}
+
+# Categories paid in arrears: the deposit arrives the month after it is earned,
+# so its P&L month is shifted back by one. Everything else uses its own date.
+DEFERRED_REVENUE_CATEGORIES = {"Gross Revenue"}
 
 # Credit-side (money in) category -> revenue line label.
 REVENUE_LINE_MAP = {
+    "Gross Revenue": "Gross Revenue",
     "Business Revenue": "Business Revenue",
     "Zelle Transfer": "Zelle Received",
     "Zelle": "Zelle Received",
@@ -63,6 +75,7 @@ EXPENSE_LINE_MAP = {
     "Healthcare": "Healthcare & Benefits",
     "Bank Fees": "Bank Fees",
     "Zelle Transfer": "Zelle Payments Out",
+    "Child Care": "Child Care",
     # Raw bank labels
     "Zelle": "Zelle Payments Out",
     "Fee": "Bank Fees",
@@ -76,6 +89,7 @@ DEFAULT_EXPENSE_LINE = "Uncategorized Expense"
 # Display order. Anything not listed sorts after these, alphabetically, so a
 # new category from the categorizer still renders instead of disappearing.
 REVENUE_LINE_ORDER = [
+    "Gross Revenue",
     "Business Revenue",
     "Deposits",
     "Zelle Received",
@@ -88,6 +102,7 @@ EXPENSE_LINE_ORDER = [
     "Zelle Payments Out",
     "Card & Finance Payments",
     "Rent & Lease",
+    "Child Care",
     "Utilities & Telecom",
     "Insurance",
     "Software & Subscriptions",
@@ -119,6 +134,32 @@ def classify(category: Optional[str], transaction_type: str) -> tuple[str, str]:
     return "expense", EXPENSE_LINE_MAP.get(cat, DEFAULT_EXPENSE_LINE if not cat else cat)
 
 
+def shift_month(dt: datetime, months: int) -> datetime:
+    """Move a datetime by whole months, clamping the day to the target month."""
+    total = (dt.year * 12 + (dt.month - 1)) + months
+    year, month = divmod(total, 12)
+    month += 1
+    # Clamp: shifting Mar 31 back a month must land on Feb 28/29, not overflow.
+    day = dt.day
+    while day > 1:
+        try:
+            return dt.replace(year=year, month=month, day=day)
+        except ValueError:
+            day -= 1
+    return dt.replace(year=year, month=month, day=1)
+
+
+def effective_date(tx_date: datetime, category: Optional[str]) -> datetime:
+    """The date the P&L should book this transaction under.
+
+    Deferred revenue is paid a month in arrears, so it belongs to the prior
+    month. Everything else books on the date the money moved.
+    """
+    if (category or "").strip() in DEFERRED_REVENUE_CATEGORIES:
+        return shift_month(tx_date, -1)
+    return tx_date
+
+
 def month_range(start: datetime, end: datetime) -> List[str]:
     """Every "YYYY-MM" key from start to end inclusive."""
     months = []
@@ -142,7 +183,7 @@ def _order_key(order: List[str]):
 
 
 def _build_lines(bucket: dict, months: List[str], order: List[str]) -> List[dict]:
-    """Turn {label: {"amount", "count", "monthly"}} into an ordered list."""
+    """Turn {label: {"amount", "count", "monthly", "manual"}} into an ordered list."""
     lines = []
     for label in sorted(bucket.keys(), key=_order_key(order)):
         entry = bucket[label]
@@ -150,18 +191,70 @@ def _build_lines(bucket: dict, months: List[str], order: List[str]) -> List[dict
             "label": label,
             "amount": round(entry["amount"], 2),
             "count": entry["count"],
+            "manual": entry.get("manual", False),
             "monthly": {m: round(entry["monthly"].get(m, 0.0), 2) for m in months},
         })
     return lines
+
+
+def _add(bucket: dict, label: str, amount: float, month_key: str, manual: bool = False):
+    entry = bucket.setdefault(
+        label, {"amount": 0.0, "count": 0, "monthly": {}, "manual": manual}
+    )
+    entry["amount"] += amount
+    entry["count"] += 1
+    entry["monthly"][month_key] = entry["monthly"].get(month_key, 0.0) + amount
+    if not manual:
+        # A line carrying any bank data is not purely manual.
+        entry["manual"] = False
+
+
+def expand_manual_entries(entries: Iterable, months: List[str]) -> List[tuple]:
+    """Expand manual entries into (month_key, entry_type, label, amount) rows.
+
+    A monthly entry produces one row per month of the period that falls inside
+    its own start/end window; a one-off produces a single row.
+    """
+    rows = []
+    for e in entries:
+        if getattr(e, "is_active", True) is False:
+            continue
+        start = e.start_date
+        end = e.end_date
+        amount = abs(e.amount or 0.0)
+
+        if e.recurrence == "once":
+            key = start.strftime("%Y-%m")
+            if key in months:
+                rows.append((key, e.entry_type, e.label, amount))
+            continue
+
+        for key in months:
+            y, m = int(key[:4]), int(key[5:7])
+            # Month must fall on or after the entry's start month...
+            if (y, m) < (start.year, start.month):
+                continue
+            # ...and on or before its end month, when one is set.
+            if end and (y, m) > (end.year, end.month):
+                continue
+            rows.append((key, e.entry_type, e.label, amount))
+    return rows
 
 
 def build_pnl(
     transactions: Iterable,
     period_start: datetime,
     period_end: datetime,
+    manual_entries: Optional[Iterable] = None,
 ) -> dict:
-    """Aggregate transactions into a cash-basis P&L statement."""
+    """Aggregate transactions and manual entries into a P&L statement.
+
+    `transactions` may span a wider window than the period — rows are filtered
+    on their *effective* date, so a deposit dated just after period_end can
+    still belong inside it once shifted back to the month it was earned.
+    """
     months = month_range(period_start, period_end)
+    month_set = set(months)
 
     revenue: dict = {}
     expense: dict = {}
@@ -169,19 +262,34 @@ def build_pnl(
     sections = {"revenue": revenue, "expense": expense, "excluded": excluded}
 
     counted = 0
+    deferred_count = 0
+    bank_months: set = set()
     for tx in transactions:
         tx_type = tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type)
+
+        # Track the month the row was actually *dated*, not where it lands on
+        # the statement. A deferred deposit shifted back a month would
+        # otherwise make an unimported month look covered.
+        native_key = tx.date.strftime("%Y-%m")
+        if native_key in month_set:
+            bank_months.add(native_key)
+
+        eff = effective_date(tx.date, tx.category)
+        key = eff.strftime("%Y-%m")
+        if key not in month_set:
+            continue  # outside the period once shifted
+
+        if eff != tx.date:
+            deferred_count += 1
+
         section, label = classify(tx.category, tx_type)
-        bucket = sections[section]
-
-        entry = bucket.setdefault(label, {"amount": 0.0, "count": 0, "monthly": {}})
-        amount = abs(tx.amount or 0.0)
-        entry["amount"] += amount
-        entry["count"] += 1
-
-        key = tx.date.strftime("%Y-%m")
-        entry["monthly"][key] = entry["monthly"].get(key, 0.0) + amount
+        _add(sections[section], label, abs(tx.amount or 0.0), key)
         counted += 1
+
+    manual_rows = expand_manual_entries(manual_entries or [], months)
+    for key, entry_type, label, amount in manual_rows:
+        bucket = revenue if entry_type == "revenue" else expense
+        _add(bucket, label, amount, key, manual=True)
 
     revenue_lines = _build_lines(revenue, months, REVENUE_LINE_ORDER)
     expense_lines = _build_lines(expense, months, EXPENSE_LINE_ORDER)
@@ -202,10 +310,19 @@ def build_pnl(
             "net": round(rev - exp, 2),
         })
 
+    # Months no statement covers — nothing was *dated* in them. Almost always
+    # an upload that never happened rather than a month with no activity.
+    #
+    # Deliberately blind to two things that would otherwise hide the gap: a
+    # recurring manual entry lands in every month, and a deferred deposit
+    # shifted back from the following month would make an unimported month
+    # look covered.
+    empty_months = [m for m in months if m not in bank_months]
+
     return {
         "period_start": period_start,
         "period_end": period_end,
-        "basis": "cash",
+        "basis": "accrual-adjusted" if deferred_count else "cash",
         "months": months,
         "revenue_lines": revenue_lines,
         "total_revenue": total_revenue,
@@ -217,4 +334,7 @@ def build_pnl(
         "total_excluded": round(sum(line["amount"] for line in excluded_lines), 2),
         "monthly_summary": monthly_summary,
         "transaction_count": counted,
+        "manual_entry_count": len(manual_rows),
+        "deferred_count": deferred_count,
+        "empty_months": empty_months,
     }

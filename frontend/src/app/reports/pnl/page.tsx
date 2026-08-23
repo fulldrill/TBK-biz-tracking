@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { reportApi, getErrorMessage } from "@/lib/api";
 import { PnlStatement, PnlLine } from "@/types";
 import { useOrg } from "@/context/OrgContext";
+import PnlEntriesPanel from "@/components/PnlEntriesPanel";
 
 const fmt = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
@@ -19,7 +20,7 @@ const monthLabel = (key: string, multiYear: boolean) => {
 
 export default function PnlPage() {
   const router = useRouter();
-  const { activeOrg, isLoading: orgLoading } = useOrg();
+  const { activeOrg, isAdmin, isLoading: orgLoading } = useOrg();
   const orgId = activeOrg?.org.id;
 
   const [years, setYears] = useState<number[]>([]);
@@ -122,7 +123,14 @@ export default function PnlPage() {
     lines.length > 0 ? (
       lines.map((line) => (
         <tr key={line.label} className="border-b last:border-0">
-          <td className="py-2 pl-6 pr-4 text-gray-700">{line.label}</td>
+          <td className="py-2 pl-6 pr-4 text-gray-700">
+            {line.label}
+            {line.manual && (
+              <span className="ml-1.5 text-xs text-teal-600" title="Manual entry">
+                *
+              </span>
+            )}
+          </td>
           <td className="py-2 pr-4 text-right text-gray-400 text-xs">{line.count}</td>
           <td className="py-2 pr-4 text-right tabular-nums text-gray-900">{fmt(line.amount)}</td>
         </tr>
@@ -226,9 +234,29 @@ export default function PnlPage() {
           </div>
         </div>
 
+        {orgId && (
+          <PnlEntriesPanel orgId={orgId} isAdmin={isAdmin} onChanged={load} />
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-4">
             {error}
+          </div>
+        )}
+
+        {/* A month with no bank rows is a missing statement, not a quiet month. */}
+        {pnl && pnl.empty_months.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-3 mb-4">
+            <p className="font-semibold">
+              Incomplete data — {pnl.empty_months.length} month
+              {pnl.empty_months.length === 1 ? "" : "s"} with no transactions
+            </p>
+            <p className="mt-1">
+              {pnl.empty_months.map((m) => monthLabel(m, multiYear)).join(", ")} have no
+              bank activity at all. That almost always means a statement was never
+              uploaded rather than a month where nothing happened — the totals below
+              understate the period.
+            </p>
           </div>
         )}
 
@@ -360,9 +388,11 @@ export default function PnlPage() {
                   <p className="text-xs text-gray-500 leading-relaxed">
                     These are balance-sheet movements, not income or expense, so they sit outside the
                     statement. Transfers are money between the owners&apos; own accounts — booking a
-                    partner topping up the account as revenue would overstate income. Loan payments
-                    are principal; the interest portion is a genuine expense, but bank transaction
-                    data cannot separate it — ask your accountant to book that adjustment.
+                    partner topping up the account as revenue would overstate income. The mortgage is
+                    an owner draw; the home-office cost belongs on the P&amp;L as a manual rent entry
+                    instead, and counting both would double-dip. Loan payments are principal; the
+                    interest portion is a genuine expense, but bank transaction data cannot separate
+                    it — ask your accountant to book that adjustment.
                   </p>
                 </div>
               )}
@@ -413,8 +443,13 @@ export default function PnlPage() {
               )}
 
               <p className="text-xs text-gray-400 mt-4">
-                Cash basis — recognized when funds moved, not when invoiced.{" "}
-                {pnl.transaction_count} transactions in period.
+                {pnl.basis === "accrual-adjusted"
+                  ? "Cash basis, adjusted for revenue paid in arrears — the payroll deposit that arrives on the 15th is booked to the month it was earned."
+                  : "Cash basis — recognized when funds moved, not when invoiced."}{" "}
+                {pnl.transaction_count} transactions in period
+                {pnl.manual_entry_count > 0 &&
+                  `, plus ${pnl.manual_entry_count} manual entries (*)`}
+                .
               </p>
             </>
           )

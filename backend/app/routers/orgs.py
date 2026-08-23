@@ -2,13 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
-from app.models import User, Organization, OrgMember, OrgRole
-from app.schemas import OrgCreate, OrgOut, OrgMemberOut, UserOrgOut, InviteCreate, InviteOut
+from app.models import User, Organization, OrgMember, OrgRole, OrgPerson, Transaction
+from app.schemas import (
+    OrgCreate, OrgOut, OrgMemberOut, UserOrgOut, InviteCreate, InviteOut,
+    OrgPersonCreate, OrgPersonOut,
+)
 from app.auth import get_current_user, require_org_role, generate_invite_token
 from app.models import OrgInvite
 from datetime import datetime, timedelta
 from typing import List, Tuple
 import re
+import uuid
 import logging
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
@@ -259,3 +263,87 @@ async def revoke_invite(
     invite.is_active = False
     await db.commit()
     return {"status": "revoked"}
+
+
+# ---------------------------------------------------------------------------
+# Org people — who a transaction can be attributed to.
+#
+# Orgs do not share owners, so this list is per-org rather than the global
+# Kenny/Bright/Tony that used to be hardcoded in the frontend.
+# ---------------------------------------------------------------------------
+
+@router.get("/{org_id}/people", response_model=List[OrgPersonOut])
+async def list_org_people(
+    org_id: str,
+    auth=Depends(require_org_role(OrgRole.VIEWER)),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(OrgPerson).where(OrgPerson.org_id == org_id).order_by(OrgPerson.name)
+    )
+    return result.scalars().all()
+
+
+@router.post("/{org_id}/people", response_model=OrgPersonOut, status_code=201)
+async def add_org_person(
+    org_id: str,
+    body: OrgPersonCreate,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+
+    existing = await db.execute(
+        select(OrgPerson).where(OrgPerson.org_id == org_id, OrgPerson.name == name)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"{name} is already on this org")
+
+    person = OrgPerson(org_id=uuid.UUID(org_id), name=name)
+    db.add(person)
+    await db.commit()
+    await db.refresh(person)
+    return person
+
+
+@router.delete("/{org_id}/people/{person_id}", status_code=200)
+async def remove_org_person(
+    org_id: str,
+    person_id: str,
+    reassign_to: str | None = None,
+    auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a person from the org.
+
+    Transactions already attributed to them are not silently orphaned: pass
+    `reassign_to` to move them to another name, otherwise they are cleared to
+    unassigned. Either way the count is reported back.
+    """
+    result = await db.execute(
+        select(OrgPerson).where(OrgPerson.id == person_id, OrgPerson.org_id == org_id)
+    )
+    person = result.scalar_one_or_none()
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    affected = await db.execute(
+        select(Transaction).where(
+            Transaction.org_id == org_id,
+            Transaction.assigned_user == person.name,
+        )
+    )
+    rows = affected.scalars().all()
+    for tx in rows:
+        tx.assigned_user = reassign_to or None
+
+    await db.delete(person)
+    await db.commit()
+    return {
+        "status": "removed",
+        "name": person.name,
+        "transactions_reassigned": len(rows),
+        "reassigned_to": reassign_to,
+    }

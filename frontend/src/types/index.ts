@@ -63,10 +63,26 @@ export interface ParsedTransaction {
   statement_file?: string;
 }
 
+export interface StatementFileReport {
+  file: string;
+  /** "text" when read from the PDF's text layer, "vision" when OCR'd. */
+  method?: "text" | "vision";
+  pages: number;
+  transactions: number;
+  failed_pages: { page: number; error: string }[];
+  /** True when the extracted totals matched the statement's own printed totals. */
+  reconciled?: boolean;
+  period_end?: string | null;
+  months: string[];
+}
+
 export interface ParseResult {
   transaction_count: number;
   transactions: ParsedTransaction[];
   source_file: string;
+  file_reports: StatementFileReport[];
+  problem_files: StatementFileReport[];
+  months_covered: string[];
 }
 
 export interface Totals {
@@ -86,8 +102,33 @@ export interface PnlLine {
   label: string;
   amount: number;
   count: number;
+  /** True when the line comes from a manual entry rather than bank data. */
+  manual: boolean;
   /** Keyed "YYYY-MM" for every month in the period. */
   monthly: Record<string, number>;
+}
+
+export type PnlEntryType = "revenue" | "expense";
+export type PnlRecurrence = "monthly" | "once";
+
+export interface PnlEntry {
+  id: string;
+  org_id: string;
+  label: string;
+  amount: number;
+  entry_type: PnlEntryType;
+  recurrence: PnlRecurrence;
+  start_date: string;
+  end_date: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface OrgPerson {
+  id: string;
+  org_id: string;
+  name: string;
 }
 
 export interface PnlMonth {
@@ -112,6 +153,11 @@ export interface PnlStatement {
   total_excluded: number;
   monthly_summary: PnlMonth[];
   transaction_count: number;
+  manual_entry_count: number;
+  /** How many rows were shifted to the month they were earned. */
+  deferred_count: number;
+  /** Months with no bank activity — almost always a missing statement. */
+  empty_months: string[];
 }
 
 export interface BankAccount {

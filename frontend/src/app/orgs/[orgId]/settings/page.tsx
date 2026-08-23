@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { orgApi } from "@/lib/api";
-import { OrgMember, OrgInvite } from "@/types";
+import { OrgMember, OrgInvite, OrgPerson } from "@/types";
 import { useOrg } from "@/context/OrgContext";
 
 type Tab = "general" | "members" | "invites" | "danger";
@@ -17,6 +17,9 @@ export default function OrgSettingsPage() {
   const [orgName, setOrgName] = useState(activeOrg?.org.name ?? "");
   const [savingName, setSavingName] = useState(false);
 
+  const [people, setPeople] = useState<OrgPerson[]>([]);
+  const [newPerson, setNewPerson] = useState("");
+  const [peopleError, setPeopleError] = useState("");
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -36,6 +39,10 @@ export default function OrgSettingsPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
+    orgApi
+      .getPeople(orgId)
+      .then((r) => setPeople(r.data))
+      .catch(() => setPeople([]));
     setLoadingMembers(true);
     orgApi.getMembers(orgId).then((r) => {
       setMembers(r.data);
@@ -126,6 +133,55 @@ export default function OrgSettingsPage() {
     { id: "danger", label: "Danger Zone" },
   ];
 
+  const handleAddPerson = async () => {
+    const name = newPerson.trim();
+    if (!name) return;
+    setPeopleError("");
+    try {
+      const res = await orgApi.addPerson(orgId, name);
+      setPeople((p) => [...p, res.data].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewPerson("");
+    } catch (err: unknown) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setPeopleError(detail || "Could not add that person.");
+    }
+  };
+
+  const handleRemovePerson = async (person: OrgPerson) => {
+    const others = people.filter((p) => p.id !== person.id).map((p) => p.name);
+    const reassign = others.length
+      ? prompt(
+          `Remove ${person.name}. Reassign their transactions to which person? ` +
+            `Leave blank to clear the assignment.\n\nAvailable: ${others.join(", ")}`,
+          ""
+        )
+      : null;
+    if (reassign === null && others.length) {
+      // prompt cancelled — do nothing
+      if (!confirm(`Remove ${person.name} and clear their transaction assignments?`)) return;
+    }
+    try {
+      const res = await orgApi.removePerson(
+        orgId,
+        person.id,
+        reassign && others.includes(reassign) ? reassign : undefined
+      );
+      setPeople((p) => p.filter((x) => x.id !== person.id));
+      const n = res.data?.transactions_reassigned ?? 0;
+      if (n) {
+        alert(
+          `${person.name} removed. ${n} transaction(s) ` +
+            (res.data.reassigned_to
+              ? `reassigned to ${res.data.reassigned_to}.`
+              : "cleared to unassigned.")
+        );
+      }
+    } catch {
+      setPeopleError("Could not remove that person.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto px-6 py-10">
@@ -172,6 +228,60 @@ export default function OrgSettingsPage() {
                 {savingName ? "Saving..." : "Save"}
               </button>
             </div>
+
+            <hr className="my-6" />
+
+            <h2 className="font-semibold text-gray-800 mb-1">People</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Who transactions in this organization can be attributed to. Each org keeps
+              its own list — someone who has no part in this business should not appear
+              here.
+            </p>
+
+            {peopleError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">
+                {peopleError}
+              </div>
+            )}
+
+            {people.length === 0 ? (
+              <p className="text-sm text-gray-400 mb-3">No people yet.</p>
+            ) : (
+              <ul className="mb-3 divide-y border rounded-lg">
+                {people.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between px-3 py-2">
+                    <span className="text-sm text-gray-800">{p.name}</span>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleRemovePerson(p)}
+                        className="text-xs text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {isAdmin && (
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  placeholder="Add a person..."
+                  value={newPerson}
+                  onChange={(e) => setNewPerson(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddPerson()}
+                  className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handleAddPerson}
+                  className="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-900 transition"
+                >
+                  Add
+                </button>
+              </div>
+            )}
           </div>
         )}
 

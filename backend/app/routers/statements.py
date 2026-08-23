@@ -18,7 +18,7 @@ from sqlalchemy import select
 from app.auth import require_org_role
 from app.config import settings
 from app.database import get_db
-from app.models import BankAccount, OrgRole, Transaction, TransactionType
+from app.models import BankAccount, OrgPerson, OrgRole, Transaction, TransactionType
 from app.schemas import ParsedTransaction, StatementImportRequest
 from app.services.statement_parser import parse_pdf_bytes, parse_zip_bytes
 
@@ -75,6 +75,7 @@ async def parse_statement(
     org_id: str,
     file: UploadFile = File(...),
     auth=Depends(require_org_role(OrgRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """
     Upload a PDF (or ZIP of PDFs) bank statement.
@@ -104,20 +105,42 @@ async def parse_statement(
     )
     is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf")
 
+    reports: list[dict[str, Any]] = []
+
+    # Attribution must stay inside this org's own people — a rule that fires
+    # for Kenny must not tag rows in an org he has no part in.
+    people = (await db.execute(
+        select(OrgPerson.name).where(OrgPerson.org_id == uuid.UUID(org_id))
+    )).scalars().all()
+    allowed = sorted(people) or None
+
     if is_zip:
-        transactions = await parse_zip_bytes(raw_bytes, client)
+        transactions = await parse_zip_bytes(
+            raw_bytes, client, reports=reports, allowed_people=allowed
+        )
     elif is_pdf:
-        transactions = await parse_pdf_bytes(raw_bytes, filename, client)
+        transactions = await parse_pdf_bytes(
+            raw_bytes, filename, client, reports=reports, allowed_people=allowed
+        )
     else:
         raise HTTPException(
             status_code=415,
             detail="Unsupported file type. Upload a PDF or a ZIP of PDFs.",
         )
 
+    # A file that yielded nothing is a failure worth showing, not a quiet zero.
+    problem_files = [
+        r for r in reports
+        if r["failed_pages"] or r["transactions"] == 0
+    ]
+
     return {
         "transaction_count": len(transactions),
         "transactions": transactions,
         "source_file": filename,
+        "file_reports": reports,
+        "problem_files": problem_files,
+        "months_covered": sorted({m for r in reports for m in r["months"]}),
     }
 
 

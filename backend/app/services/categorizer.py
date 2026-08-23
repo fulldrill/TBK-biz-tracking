@@ -1,6 +1,19 @@
 from typing import Optional
 import re
 
+# Rules checked BEFORE any Plaid-supplied category, because the bank's own
+# label is too coarse for these — it calls the payroll deposit "Deposit" and
+# the mortgage "Payment", which loses the distinction the P&L depends on.
+#
+# CMCI is the client that pays LITANRYAN. OCR renders the descriptor
+# inconsistently ("CORP PAY CMCI-", "CORP PAY CML-", and a LITANYRYAN typo),
+# so match loosely rather than on an exact string.
+PRIORITY_RULES = [
+    (re.compile(r'corp\s*pay\s*(cmci|cml)|litan[yr]*ryan\s+technologie', re.I), "Gross Revenue"),
+    (re.compile(r'pennymac', re.I), "Mortgage"),
+    (re.compile(r'\bmimi\b', re.I), "Child Care"),
+]
+
 CATEGORY_RULES = [
     (re.compile(r'grocery|safeway|kroger|whole foods|trader joe|aldi|publix|wegmans', re.I), "Groceries"),
     (re.compile(r'shell|chevron|exxon|bp|gas|fuel|mobil|citgo|sunoco', re.I), "Gas & Fuel"),
@@ -26,10 +39,18 @@ def categorize_transaction(
     name: str,
     description: Optional[str] = None,
     plaid_category: Optional[str] = None,
+    zelle_counterparty: Optional[str] = None,
 ) -> str:
+    text = f"{name or ''} {description or ''} {zelle_counterparty or ''}"
+
+    # Priority rules win over the bank's own category — see PRIORITY_RULES.
+    for pattern, category in PRIORITY_RULES:
+        if pattern.search(text):
+            return category
+
     if plaid_category:
         return plaid_category
-    text = f"{name or ''} {description or ''}"
+
     for pattern, category in CATEGORY_RULES:
         if pattern.search(text):
             return category

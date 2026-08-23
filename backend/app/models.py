@@ -115,6 +115,44 @@ class Transaction(Base):
     loan_repayments = relationship("LoanRepayment", back_populates="transaction")
 
 
+class PnlEntry(Base):
+    """A manual line on the P&L that never hit the bank account.
+
+    Covers things a bank feed cannot know about — the home-office rent the
+    business owes, cash income, an adjustment the accountant asked for.
+    `recurrence="monthly"` expands to one occurrence per month between
+    start_date and end_date (open-ended when end_date is NULL).
+    """
+    __tablename__ = "pnl_entries"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    label = Column(String, nullable=False)              # shown as the P&L line item
+    amount = Column(Float, nullable=False)              # always positive
+    entry_type = Column(String, nullable=False)         # "revenue" | "expense"
+    recurrence = Column(String, nullable=False, default="monthly")  # "monthly" | "once"
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=True)          # NULL = ongoing
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    org = relationship("Organization")
+
+
+class OrgPerson(Base):
+    """Someone a transaction can be attributed to, scoped to one org.
+
+    Replaces the globally hardcoded Kenny/Bright/Tony list — orgs do not
+    share owners, so the assignable set has to be per-org.
+    """
+    __tablename__ = "org_people"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_org_person"),)
+    org = relationship("Organization")
+
+
 class Loan(Base):
     __tablename__ = "loans"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

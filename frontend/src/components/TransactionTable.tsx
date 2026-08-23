@@ -8,6 +8,8 @@ interface Props {
   orgId: string;
   transactions: Transaction[];
   isAdmin?: boolean;
+  /** Names this org can attribute to. Orgs do not share owners. */
+  people?: string[];
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   onTransactionUpdated: (tx: Transaction) => void;
@@ -16,22 +18,39 @@ interface Props {
 const fmt = (val: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(val));
 
-const USERS = ["Kenny", "Bright", "Tony", "—"];
+// Stable colour per name so a badge looks the same everywhere, without
+// hardcoding which people exist — that list is per-org and editable.
+const BADGE_COLORS = [
+  "bg-blue-100 text-blue-700",
+  "bg-amber-100 text-amber-700",
+  "bg-teal-100 text-teal-700",
+  "bg-violet-100 text-violet-700",
+  "bg-rose-100 text-rose-700",
+  "bg-lime-100 text-lime-700",
+];
+
+function badgeColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  return BADGE_COLORS[Math.abs(hash) % BADGE_COLORS.length];
+}
 
 function UserBadge({ user }: { user: string | null }) {
-  if (user === "Kenny")
-    return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Kenny</span>;
-  if (user === "Bright")
-    return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Bright</span>;
-  if (user === "Tony")
-    return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">Tony</span>;
-  return <span className="text-gray-300 text-xs">—</span>;
+  if (!user) return <span className="text-gray-300 text-xs">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor(user)}`}
+    >
+      {user}
+    </span>
+  );
 }
 
 export default function TransactionTable({
   orgId,
   transactions,
   isAdmin,
+  people = [],
   selectedIds,
   onSelectionChange,
   onTransactionUpdated,
@@ -183,9 +202,17 @@ export default function TransactionTable({
                       disabled={patching === tx.id}
                       className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50 bg-white"
                     >
-                      {USERS.map((u) => (
+                      {/* A stale value (someone removed from the org) still
+                          renders, so an existing assignment is never hidden. */}
+                      {Array.from(
+                        new Set([
+                          ...people,
+                          ...(tx.assigned_user ? [tx.assigned_user] : []),
+                        ])
+                      ).map((u) => (
                         <option key={u} value={u}>{u}</option>
                       ))}
+                      <option value="—">—</option>
                     </select>
                   ) : (
                     <UserBadge user={computedUser} />

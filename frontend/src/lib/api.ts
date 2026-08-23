@@ -146,6 +146,14 @@ export const orgApi = {
     api.patch(`/orgs/${orgId}/members/${userId}`, { role }),
   removeMember: (orgId: string, userId: string) =>
     api.delete(`/orgs/${orgId}/members/${userId}`),
+  // People a transaction can be attributed to, scoped to this org.
+  getPeople: (orgId: string) => api.get(`/orgs/${orgId}/people`),
+  addPerson: (orgId: string, name: string) =>
+    api.post(`/orgs/${orgId}/people`, { name }),
+  removePerson: (orgId: string, personId: string, reassignTo?: string) =>
+    api.delete(`/orgs/${orgId}/people/${personId}`, {
+      params: reassignTo ? { reassign_to: reassignTo } : undefined,
+    }),
   createInvite: (orgId: string, role: string, expires_hours = 168) =>
     api.post(`/orgs/${orgId}/invites`, { role, expires_hours }),
   listInvites: (orgId: string) => api.get(`/orgs/${orgId}/invites`),
@@ -188,6 +196,15 @@ export const reportApi = {
 
   pnlPdf: (orgId: string, params: { year?: number; start_date?: string; end_date?: string }) =>
     api.get(`/orgs/${orgId}/reports/pnl/pdf`, { params, responseType: "blob" }),
+
+  // Manual P&L entries — costs and income that never hit the bank account.
+  listEntries: (orgId: string) => api.get(`/orgs/${orgId}/reports/entries`),
+  createEntry: (orgId: string, data: Record<string, unknown>) =>
+    api.post(`/orgs/${orgId}/reports/entries`, data),
+  updateEntry: (orgId: string, entryId: string, data: Record<string, unknown>) =>
+    api.patch(`/orgs/${orgId}/reports/entries/${entryId}`, data),
+  deleteEntry: (orgId: string, entryId: string) =>
+    api.delete(`/orgs/${orgId}/reports/entries/${entryId}`),
 };
 
 export const statementApi = {

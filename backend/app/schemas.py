@@ -202,6 +202,61 @@ class LoanOut(BaseModel):
         from_attributes = True
 
 
+# --- Manual P&L entry schemas ---
+
+class PnlEntryCreate(BaseModel):
+    label: str
+    amount: float
+    entry_type: str                    # "revenue" | "expense"
+    recurrence: str = "monthly"        # "monthly" | "once"
+    start_date: datetime
+    end_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class PnlEntryUpdate(BaseModel):
+    label: Optional[str] = None
+    amount: Optional[float] = None
+    entry_type: Optional[str] = None
+    recurrence: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class PnlEntryOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    label: str
+    amount: float
+    entry_type: str
+    recurrence: str
+    start_date: datetime
+    end_date: Optional[datetime]
+    notes: Optional[str]
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Org people schemas ---
+
+class OrgPersonCreate(BaseModel):
+    name: str
+
+
+class OrgPersonOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 class LoanSummaryOut(BaseModel):
     total_loaned: float
     total_repaid: float
