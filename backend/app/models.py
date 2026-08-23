@@ -182,6 +182,9 @@ class OrgPerson(Base):
     #              school). Money out is still a draw: it left the business for
     #              personal use, and who received it does not change that.
     kind = Column(String, nullable=False, default="owner")
+    # Splits the draw into its own line — "Childcare", "Gifts & Other" — so each
+    # can be seen and handled separately instead of one opaque total.
+    draw_label = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_org_person"),)
     org = relationship("Organization")

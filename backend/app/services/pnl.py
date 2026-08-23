@@ -151,7 +151,9 @@ def classify(category: Optional[str], transaction_type: str) -> tuple[str, str]:
     """
     cat = (category or "").strip()
 
-    if cat in EXCLUDED_CATEGORIES:
+    # Prefix match so a split draw — "Owner's Draw — Childcare" — is excluded
+    # the same way the unsplit category is.
+    if cat in EXCLUDED_CATEGORIES or cat.startswith(("Owner's Draw", "Owner's Contribution")):
         return "excluded", cat
 
     if transaction_type == "credit":

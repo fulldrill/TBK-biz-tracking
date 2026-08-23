@@ -214,3 +214,55 @@ def test_money_back_from_a_personal_payee_is_not_called_capital():
     note = purpose_note(CATEGORY_CONTRIBUTION, "Marilyn Sheriff", "LITANRYAN", "personal")
     assert "a principal" not in note
     assert "not business income" in note
+
+
+# --- splitting the draw into its own lines ---
+
+class _LabelledPerson:
+    def __init__(self, name, kind="personal", draw_label=None, aliases=None):
+        self.name = name
+        self.kind = kind
+        self.aliases = aliases
+        self.draw_label = draw_label
+
+
+def test_a_draw_label_gives_the_withdrawal_its_own_line():
+    owners = owner_tokens([_LabelledPerson("Mimi S", draw_label="Childcare")])
+    cat, who = classify_owner_transfer(True, "Mimi S", "sent", "debit", owners)
+    assert cat == "Owner's Draw — Childcare"
+    assert who == "Mimi S"
+
+
+def test_an_unlabelled_person_keeps_the_plain_draw_line():
+    owners = owner_tokens([_LabelledPerson("Bright", kind="owner")])
+    cat, _ = classify_owner_transfer(True, "Bright Litandaze", "sent", "debit", owners)
+    assert cat == CATEGORY_DRAW
+
+
+def test_every_split_draw_is_still_excluded():
+    for label in ("Owner's Draw — Childcare", "Owner's Draw — Gifts & Other",
+                  "Owner's Draw — Self", CATEGORY_DRAW):
+        assert classify(label, "debit")[0] == "excluded", label
+        assert classify(label, "debit")[1] == label
+
+
+def test_split_draws_do_not_reach_expenses():
+    from datetime import datetime
+
+    class _Type:
+        def __init__(self, v): self.value = v
+
+    class _Tx:
+        def __init__(self, amount, category):
+            self.date = datetime(2025, 3, 5)
+            self.amount = amount
+            self.category = category
+            self.transaction_type = _Type("debit")
+
+    pnl = build_pnl(
+        [_Tx(16450.0, "Owner's Draw — Childcare"), _Tx(500.0, "Office Supplies")],
+        datetime(2025, 3, 1), datetime(2025, 3, 31),
+    )
+    assert pnl["total_expenses"] == 500.0
+    labels = {l["label"] for l in pnl["excluded_lines"]}
+    assert "Owner's Draw — Childcare" in labels

@@ -53,11 +53,12 @@ def owner_tokens(people: Iterable) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     for person in people or ():
         if isinstance(person, str):
-            name, aliases, kind = person, "", "owner"
+            name, aliases, kind, label = person, "", "owner", None
         else:
             name = getattr(person, "name", "") or ""
             aliases = getattr(person, "aliases", "") or ""
             kind = getattr(person, "kind", "owner") or "owner"
+            label = getattr(person, "draw_label", None)
         if not name:
             continue
         toks = _tokens(name)
@@ -66,13 +67,23 @@ def owner_tokens(people: Iterable) -> dict[str, set[str]]:
         if toks:
             # (tokens, kind) rather than a module-level side table: two orgs can
             # be classified concurrently and must not see each other's people.
-            out[name] = (toks, kind)
+            out[name] = (toks, kind, label)
     return out
 
 
 def kind_of(owners: dict, name: str) -> str:
     entry = owners.get(name)
     return entry[1] if entry else "owner"
+
+
+def draw_label_of(owners: dict, name: str) -> str | None:
+    entry = owners.get(name)
+    return entry[2] if entry and len(entry) > 2 else None
+
+
+def draw_category(label: str | None) -> str:
+    """The draw's own line, so each kind of withdrawal stays visible."""
+    return f"{CATEGORY_DRAW} — {label}" if label else CATEGORY_DRAW
 
 
 def match_owner(counterparty: Optional[str], owners: dict[str, set[str]]) -> Optional[str]:
@@ -82,7 +93,7 @@ def match_owner(counterparty: Optional[str], owners: dict[str, set[str]]) -> Opt
     party = _tokens(counterparty)
     if not party:
         return None
-    for name, (toks, _kind) in owners.items():
+    for name, (toks, *_rest) in owners.items():
         if party & toks:
             return name
     return None
@@ -110,13 +121,13 @@ def classify_owner_transfer(
         # a sale — the business never earned it. Same section as a principal's
         # capital contribution.
         return (CATEGORY_CONTRIBUTION, owner)
-    return (CATEGORY_DRAW, owner)
+    return (draw_category(draw_label_of(owners, owner)), owner)
 
 
 def purpose_note(category: str, owner: str, org_name: str = "", kind: str = "owner") -> str:
     """The business-purpose line for an owner transfer."""
     entity = f" of {org_name}" if org_name else ""
-    if category == CATEGORY_CONTRIBUTION:
+    if category.startswith(CATEGORY_CONTRIBUTION):
         if kind == "personal":
             # Not a principal putting capital in — money coming back from
             # someone the owner paid. Either way the business did not earn it.
