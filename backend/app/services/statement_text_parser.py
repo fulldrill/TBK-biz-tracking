@@ -58,6 +58,45 @@ def has_text_layer(pdf_bytes: bytes, min_chars: int = 200) -> bool:
     return chars >= min_chars
 
 
+# The account header line, e.g. "TRUIST SIMPLE BUSINESS CHECKING 1000271537218".
+# Leading junk covers the bullet glyphs the PDF uses ("¡", "§").
+#
+# Uses [ \t] rather than \s so the match cannot run across a line break — the
+# page-footer line ("PAGE 1 OF 3") sits directly above a stray number and would
+# otherwise match.
+_ACCOUNT_LINE_RE = re.compile(
+    r"^[^A-Za-z0-9\n]*([A-Z][A-Z0-9 &'\-]{6,60}?)[ \t]+(\d{6,})[ \t]*$", re.M
+)
+# Page furniture that looks like an account line but is not.
+_NOT_ACCOUNT = re.compile(r"\b(PAGE|STATEMENT|ACCOUNT SUMMARY)\b")
+
+
+def mask_account(number: str) -> str:
+    """Last four only. A receipt identifies the account; it does not expose it."""
+    digits = re.sub(r"\D", "", number or "")
+    return f"••••{digits[-4:]}" if len(digits) >= 4 else ""
+
+
+def extract_account_info(text: str) -> dict[str, str]:
+    """Pull the institution and account identity out of a statement header.
+
+    This is what turns a receipt from a floating third-party summary into a
+    voucher that ties back to primary documentation.
+    """
+    info: dict[str, str] = {}
+    for m in _ACCOUNT_LINE_RE.finditer(text or ""):
+        account_name = re.sub(r"\s+", " ", m.group(1)).strip()
+        if _NOT_ACCOUNT.search(account_name):
+            continue
+        info["account_name"] = account_name
+        info["account_masked"] = mask_account(m.group(2))
+        # The institution is the leading word of the account description.
+        first = account_name.split()[0] if account_name.split() else ""
+        info["institution"] = first.title() if first else ""
+        break
+    return info
+
+
 def _statement_period(text: str) -> datetime | None:
     m = _PERIOD_RE.search(text)
     if not m:
@@ -101,6 +140,7 @@ def parse_statement_text(pdf_bytes: bytes, filename: str = "") -> dict[str, Any]
         doc.close()
 
     period_end = _statement_period(text)
+    account = extract_account_info(text)
     lines = [ln.strip() for ln in text.split("\n")]
 
     transactions: list[dict[str, Any]] = []
@@ -211,6 +251,7 @@ def parse_statement_text(pdf_bytes: bytes, filename: str = "") -> dict[str, Any]
         "period_end": period_end.strftime("%Y-%m-%d") if period_end else None,
         "checks": checks,
         "filename": filename,
+        "account": account,
     }
 
 
@@ -239,6 +280,8 @@ def enrich(
     transactions: list[dict[str, Any]],
     filename: str = "",
     allowed_people: list[str] | None = None,
+    period_end: str | None = None,
+    account: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Add Zelle fields, category, and attribution to raw text-parsed rows."""
     from app.services.attribution import assign_user
@@ -265,6 +308,12 @@ def enrich(
         )
         tx["source"] = "statement_import"
         tx["statement_file"] = filename
+        tx["statement_period"] = period_end
+        acct = account or {}
+        tx["account_label"] = (
+            f'{acct.get("account_name", "")} {acct.get("account_masked", "")}'.strip()
+            or None
+        )
 
     return transactions
 

@@ -128,6 +128,9 @@ export const totalsApi = {
 export const receiptApi = {
   downloadSingle: (orgId: string, transaction_id: string) =>
     api.get(`/orgs/${orgId}/receipts/${transaction_id}`, { responseType: "blob" }),
+  /** Every matching receipt as one PDF, one per page. Honours dashboard filters. */
+  downloadAll: (orgId: string, params: Record<string, unknown>) =>
+    api.get(`/orgs/${orgId}/receipts/all`, { params, responseType: "blob" }),
   downloadBatch: (orgId: string, start_date?: string, end_date?: string) =>
     api.post(`/orgs/${orgId}/receipts/batch`, null, {
       params: { start_date, end_date },

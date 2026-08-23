@@ -207,6 +207,9 @@ async def import_statement_transactions(
             zelle_direction=tx.zelle_direction,
             assigned_user=tx.assigned_user,
             source="statement_import",
+            statement_file=tx.statement_file,
+            statement_period=tx.statement_period,
+            account_label=tx.account_label,
         )
         db.add(record)
         inserted += 1

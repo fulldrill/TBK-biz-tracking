@@ -227,7 +227,11 @@ async def parse_pdf_bytes(
         result = parse_statement_text(pdf_bytes, filename)
         checks = result["checks"]
         if checks["ok"] and result["transactions"]:
-            txns = enrich(result["transactions"], filename, allowed_people)
+            txns = enrich(
+                result["transactions"], filename, allowed_people,
+                period_end=result.get("period_end"),
+                account=result.get("account"),
+            )
             logger.info(
                 f"  → text layer: {len(txns)} transaction(s), reconciles with "
                 f"statement totals"

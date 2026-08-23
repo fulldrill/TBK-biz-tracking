@@ -108,6 +108,11 @@ class Transaction(Base):
     receipt_path = Column(String, nullable=True)
     assigned_user = Column(String, nullable=True)       # "Kenny" | "Bright" | None
     source = Column(String, nullable=False, default="plaid")  # "plaid" | "statement_import"
+    # Provenance — ties a receipt back to the primary document it came from.
+    # Without these a receipt is a floating summary; with them it is a voucher.
+    statement_file = Column(String, nullable=True)      # source PDF filename
+    statement_period = Column(String, nullable=True)    # statement closing date, ISO
+    account_label = Column(String, nullable=True)       # "TRUIST ... CHECKING ••••7218"
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="transactions")
     org = relationship("Organization", back_populates="transactions")

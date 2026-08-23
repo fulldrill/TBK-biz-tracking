@@ -64,6 +64,9 @@ class ParsedTransaction(BaseModel):
     zelle_direction: Optional[str] = None
     category: Optional[str] = None
     assigned_user: Optional[str] = None  # Resolved by TBK attribution logic
+    statement_file: Optional[str] = None
+    statement_period: Optional[str] = None
+    account_label: Optional[str] = None
 
 
 class StatementImportRequest(BaseModel):

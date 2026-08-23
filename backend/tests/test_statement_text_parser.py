@@ -12,6 +12,8 @@ from app.services.statement_text_parser import (
     parse_statement_text,
     has_text_layer,
     extract_counterparty,
+    extract_account_info,
+    mask_account,
     enrich,
     _resolve_year,
     _bank_category,
@@ -206,3 +208,52 @@ def test_bank_category_fallbacks():
     assert _bank_category("OVERDRAFT ITEM FEE", False) == "Fee"
     assert _bank_category("OUTGOING WIRE TRANSFER", False) == "Transfer"
     assert _bank_category("anything else entirely", False) == "Other"
+
+
+# --- account provenance ---
+
+def test_extracts_institution_and_masked_account():
+    text = "\n".join([
+        "Contact us", "Truist.com",
+        "LITANRYAN TECHNOLOGIES INC",
+        "Your account statement", "For 08/29/2025",
+        "§ PAGE  1  OF  2",
+        "0049787",
+        "¡ TRUIST SIMPLE BUSINESS CHECKING 1000271537218",
+    ])
+    info = extract_account_info(text)
+    assert info["institution"] == "Truist"
+    assert info["account_name"] == "TRUIST SIMPLE BUSINESS CHECKING"
+    assert info["account_masked"] == "••••7218"
+
+
+def test_page_furniture_is_not_mistaken_for_an_account():
+    # "PAGE 1 OF 2" sits directly above a stray number in the text layer.
+    text = "§ PAGE  1  OF  2\n0049787\n"
+    assert extract_account_info(text) == {}
+
+
+def test_mask_account_keeps_only_last_four():
+    assert mask_account("1000271537218") == "••••7218"
+    assert mask_account("12") == ""
+
+
+def test_enrich_stamps_provenance_on_every_row():
+    rows = [{"date": "2025-08-15", "name": "ANY", "amount": 1.0,
+             "transaction_type": "debit"}]
+    out = enrich(
+        rows, "August, 2025.pdf",
+        period_end="2025-08-29",
+        account={"account_name": "TRUIST SIMPLE BUSINESS CHECKING",
+                 "account_masked": "••••7218"},
+    )
+    assert out[0]["statement_file"] == "August, 2025.pdf"
+    assert out[0]["statement_period"] == "2025-08-29"
+    assert out[0]["account_label"] == "TRUIST SIMPLE BUSINESS CHECKING ••••7218"
+
+
+def test_enrich_without_account_leaves_label_empty():
+    rows = [{"date": "2025-08-15", "name": "ANY", "amount": 1.0,
+             "transaction_type": "debit"}]
+    out = enrich(rows, "x.pdf")
+    assert out[0]["account_label"] is None

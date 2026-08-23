@@ -229,6 +229,10 @@ async def startup():
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "
             "source VARCHAR NOT NULL DEFAULT 'plaid'"
         ))
+        for _col in ("statement_file", "statement_period", "account_label"):
+            await conn.execute(text(
+                f"ALTER TABLE transactions ADD COLUMN IF NOT EXISTS {_col} VARCHAR"
+            ))
         # Loan tables are created by create_all above; no ALTER TABLE needed for new installs
     os.makedirs("./receipts", exist_ok=True)
     await run_org_migration()

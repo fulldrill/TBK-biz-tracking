@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [syncMessage, setSyncMessage] = useState("");
   const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
   const [people, setPeople] = useState<string[]>([]);
+  const [downloadingReceipts, setDownloadingReceipts] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [filters, setFilters] = useState({
@@ -118,6 +119,33 @@ export default function Dashboard() {
     }
   };
 
+  const handleDownloadAllReceipts = async () => {
+    if (!orgId) return;
+    setDownloadingReceipts(true);
+    try {
+      // Same filters as the table, so the file matches what is on screen.
+      const params: Record<string, unknown> = {};
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.transaction_type) params.transaction_type = filters.transaction_type;
+      if (filters.is_zelle === "true") params.is_zelle = true;
+      if (filters.is_zelle === "false") params.is_zelle = false;
+      if (filters.category) params.category = filters.category;
+
+      const res = await receiptApi.downloadAll(orgId, params);
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "receipts.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("No transactions match the current filters, or the export failed.");
+    } finally {
+      setDownloadingReceipts(false);
+    }
+  };
+
   const handleTransactionUpdated = (updated: Transaction) => {
     setTransactions((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   };
@@ -210,6 +238,14 @@ export default function Dashboard() {
               className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium transition"
             >
               Export PDF
+            </button>
+            <button
+              onClick={handleDownloadAllReceipts}
+              disabled={downloadingReceipts}
+              title="Every receipt matching the current filters, one per page, as a single PDF"
+              className="bg-cyan-700 text-white px-4 py-2 rounded-lg hover:bg-cyan-800 text-sm font-medium disabled:opacity-50 transition"
+            >
+              {downloadingReceipts ? "Building..." : "All Receipts"}
             </button>
             <button
               onClick={() => exportToCSV(transactions)}
